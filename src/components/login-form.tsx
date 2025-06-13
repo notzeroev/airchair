@@ -41,7 +41,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
     <div className={cn('flex flex-col gap-6', className)} {...props}>
       <Card>
         <CardHeader className='justify-center text-center'>
-          <CardTitle className="text-2xl">Welcome!</CardTitle>
+          <CardTitle className="text-2xl">Welcome to Airchair</CardTitle>
           <CardDescription>Sign in to your account to continue</CardDescription>
         </CardHeader>
         <CardContent>
