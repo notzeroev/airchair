@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 export const CurrentUserAvatar = () => {
   const profileImage = useCurrentUserImage()
   const name = useCurrentUserName()
-  const initials = name[0]?.toUpperCase() || '?'
+  const initials = name[0]?.toUpperCase() ?? '?'
 
   const getColorClass = (c: string) => {
     if ('ABCDEF'.includes(c)) return 'bg-red-500';

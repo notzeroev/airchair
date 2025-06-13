@@ -6,14 +6,23 @@ export const useCurrentUserImage = () => {
 
   useEffect(() => {
     const fetchUserImage = async () => {
-      const { data, error } = await createClient().auth.getSession()
-      if (error) {
-        console.error(error)
-      }
+      try {
+        const { data, error } = await createClient().auth.getSession()
+        if (error) {
+          console.error(error)
+          setImage(null)
+          return
+        }
 
-      setImage(data.session?.user.user_metadata.avatar_url ?? null)
+        const userImage = data.session?.user.user_metadata.avatar_url as string | undefined
+        setImage(userImage ?? null)
+      } catch (error) {
+        console.error('Failed to fetch user image:', error)
+        setImage(null)
+      }
     }
-    fetchUserImage()
+
+    void fetchUserImage()
   }, [])
 
   return image
