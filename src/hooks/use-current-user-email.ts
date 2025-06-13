@@ -6,16 +6,24 @@ export const useCurrentUserEmail = () => {
 
   useEffect(() => {
     const fetchProfileEmail = async () => {
-      const { data, error } = await createClient().auth.getSession()
-      if (error) {
-        console.error(error)
-      }
+      try {
+        const { data, error } = await createClient().auth.getSession()
+        if (error) {
+          console.error(error)
+          setEmail('?')
+          return
+        }
 
-      setEmail(data.session?.user.user_metadata.email ?? '?')
+        const userEmail = data.session?.user.user_metadata.email as string | undefined
+        setEmail(userEmail ?? '?')
+      } catch (error) {
+        console.error('Failed to fetch user email:', error)
+        setEmail('?')
+      }
     }
 
-    fetchProfileEmail()
+    void fetchProfileEmail()
   }, [])
 
-  return email || '?'
+  return email ?? '?'
 }
