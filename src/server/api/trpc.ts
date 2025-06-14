@@ -6,9 +6,11 @@
  * TL;DR - This is where all the tRPC server stuff is created and plugged in. The pieces you will
  * need to use are documented accordingly near the end.
  */
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
+import { createServerClient } from "@supabase/ssr";
+import { type User, type Session } from "@supabase/supabase-js";
 
 /**
  * 1. CONTEXT
@@ -23,8 +25,85 @@ import { ZodError } from "zod";
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
+  // Extract the Authorization header for JWT-based auth
+  const authHeader = opts.headers.get("Authorization");
+  
+  let user: User | null = null;
+  let session: Session | null = null;
+  
+  if (authHeader?.startsWith("Bearer ")) {
+    // Extract JWT token from Bearer token
+    const token = authHeader.slice(7); // Remove "Bearer " prefix
+    
+    if (token && token !== "undefined" && token !== "null") {
+      try {
+        // Create Supabase client for server-side authentication
+        // Using @supabase/ssr with proper configuration for API routes
+        const supabase = createServerClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            cookies: {
+              // For API routes, we don't have access to cookies directly
+              // This is for JWT-based authentication via headers
+              getAll() {
+                return [];
+              },
+              setAll() {
+                // No-op for JWT validation in API routes
+              },
+            },
+          }
+        );
+
+        // Use the latest getUser() method with explicit token
+        // This validates the JWT and returns user data
+        const { data: { user: authenticatedUser }, error: userError } = await supabase.auth.getUser(token);
+        
+        if (!userError && authenticatedUser) {
+          user = authenticatedUser;
+          
+          // Optionally get session data for additional context
+          // Note: getSession() is the modern method, not deprecated session()
+          const { data: { session: userSession }, error: sessionError } = await supabase.auth.getSession();
+          if (!sessionError && userSession) {
+            session = userSession;
+          }
+        } else if (userError) {
+          // Log authentication errors for debugging (but don't expose to client)
+          console.warn("JWT authentication failed:", userError.message);
+        }
+      } catch (error) {
+        // Handle unexpected errors during token validation
+        console.error("Unexpected error during authentication:", error);
+      }
+    }
+  }
+
   return {
     ...opts,
+    user,
+    session,
+    // Helper function to get Supabase client with user context
+    getSupabaseClient: () => {
+      return createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return [];
+            },
+            setAll() {
+              // No-op
+            },
+          },
+          global: {
+            headers: authHeader ? { Authorization: authHeader } : {},
+          },
+        }
+      );
+    },
   };
 };
 
@@ -101,3 +180,30 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  * are logged in.
  */
 export const publicProcedure = t.procedure.use(timingMiddleware);
+
+/**
+ * Protected (authenticated) procedure
+ *
+ * If you want a query or mutation to ONLY be accessible to logged in users, use this. It verifies
+ * the session is valid and guarantees `ctx.user` is not null.
+ *
+ * @see https://trpc.io/docs/procedures
+ */
+export const protectedProcedure = t.procedure
+  .use(timingMiddleware)
+  .use(({ ctx, next }) => {
+    if (!ctx.user) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "Authentication required",
+      });
+    }
+    return next({
+      ctx: {
+        // infers the `user` as non-nullable
+        ...ctx,
+        user: ctx.user,
+        session: ctx.session,
+      },
+    });
+  });

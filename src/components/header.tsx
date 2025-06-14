@@ -30,7 +30,9 @@ export const Header = () => {
       <div className='flex items-center gap-4'>
         <DropdownMenu>
           <DropdownMenuTrigger>
-            <CurrentUserAvatar />
+            <div className='border-2 rounded-full border-white'>
+              <CurrentUserAvatar />
+            </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent sideOffset={5} align="end">
             <DropdownMenuLabel>
