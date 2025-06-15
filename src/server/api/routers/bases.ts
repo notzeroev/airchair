@@ -4,15 +4,8 @@ import { getRandomColor } from "@/lib/colors/colors";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 
-/**
- * Bases router - handles base management operations
- */
 export const basesRouter = createTRPCRouter({
-  /**
-   * Create a new base
-   * Protected mutation - requires authentication
-   */
-  createBase: protectedProcedure
+  create: protectedProcedure
     .input(z.object({ 
       name: z.string().min(1, "Base name is required").max(100, "Base name too long"),
     }))
@@ -20,7 +13,6 @@ export const basesRouter = createTRPCRouter({
       const supabase = ctx.getSupabaseClient();
       
       try {
-        // Insert new base into the 'bases' table
         const { data, error } = await supabase
           .from('bases')
           .insert({
@@ -42,7 +34,7 @@ export const basesRouter = createTRPCRouter({
         return {
           id: data.id as number,
           name: data.name as string,
-          color: data.color as string,
+          color: data.color as number,
         };
       } catch (error) {
         if (error instanceof TRPCError) {
@@ -61,7 +53,7 @@ export const basesRouter = createTRPCRouter({
    * Get all bases for the authenticated user
    * Protected query - requires authentication
    */
-  getBases: protectedProcedure
+  getAll: protectedProcedure
     .query(async ({ ctx }) => {
       const supabase = ctx.getSupabaseClient();
       
@@ -81,7 +73,14 @@ export const basesRouter = createTRPCRouter({
           });
         }
 
-        return data || [];
+        // Ensure proper typing by mapping the data
+        const bases = (data || []).map(base => ({
+          id: base.id as number,
+          name: base.name as string,
+          color: base.color as number,
+        }));
+
+        return bases;
       } catch (error) {
         if (error instanceof TRPCError) {
           throw error;
