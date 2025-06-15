@@ -3,6 +3,7 @@
 import { ColorClasses, type ColorIndex } from "@/lib/colors/colors";
 import { useState } from "react";
 import { api } from "@/trpc/react";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -55,9 +56,10 @@ export function BaseTable() {
       { bases.data?.map((base) => {
         const colorClass = ColorClasses[base.color as ColorIndex];
         return (
-        <div
-          key={base.id}
-          className={`p-4 rounded-lg border-2 border-${colorClass ?? ""} shadow-sm hover:shadow-md transition-shadow`}
+        <Link 
+          key={base.id} 
+          href={`/base/${base.id}`}
+          className={`block p-4 rounded-lg border-2 border-${colorClass ?? ""} shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
         >
           <div className="items-center space-x-4">
             <div className="flex flex-col gap-1 pb-1">
@@ -70,7 +72,7 @@ export function BaseTable() {
             </div>
               <p className="text-sm opacity-50 truncate">Base</p>
           </div>
-        </div>
+        </Link>
         );
       })}
 
