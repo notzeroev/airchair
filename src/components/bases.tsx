@@ -13,38 +13,15 @@ import {
 } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 
-interface Base {
-  id: number;
-  name: string;
-  color: ColorIndex;
-}
-
-// Type guard function to ensure we have the right types
-function isValidBase(base: unknown): base is Base {
-  if (typeof base !== 'object' || base === null) return false;
-  
-  const obj = base as Record<string, unknown>;
-  return (
-    'id' in obj &&
-    'name' in obj &&
-    'color' in obj &&
-    typeof obj.name === 'string' &&
-    typeof obj.color === 'number'
-  );
-}
-
 export function BaseTable() {
   const [baseName, setBaseName] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // Query to get all bases for the authenticated user
-  const { data: bases, isLoading, refetch } = api.bases.getBases.useQuery();
-
-  // Mutation to create a new base
-  const createBaseMutation = api.bases.createBase.useMutation({
+  const bases = api.bases.getAll.useQuery();
+  const createBase = api.bases.create.useMutation({
     onSuccess: () => {
-      // Refetch bases after successful creation
-      void refetch();
+      void bases.refetch();
       setBaseName("");
       setDialogOpen(false);
     },
@@ -53,80 +30,87 @@ export function BaseTable() {
     },
   });
 
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (baseName.trim()) {
-      createBaseMutation.mutate({ name: baseName.trim() });
+      createBase.mutate({ name: baseName.trim() });
     }
   };
 
-  if (isLoading) {
-    return <div>Loading bases...</div>;
+  if (bases.isLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 auto-rows-fr gap-4">
+        {Array.from({ length: 16 }).map((_, index) => (
+          <div key={index} className="shimmer p-16 border rounded-lg flex items-center justify-center">
+            <div className="w-6 h-6 text-gray-200 cursor-pointer" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        { bases?.filter(isValidBase).map((base: Base) => {
-          const colorClass = ColorClasses[base.color];
-          return (
-          <div
-            key={base.id}
-            className={`p-4 rounded-lg border-2 border-${colorClass ?? ""} shadow-sm hover:shadow-md transition-shadow`}
-          >
-            <div className="items-center space-x-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 auto-rows-fr gap-4">
+      { bases.data?.map((base) => {
+        const colorClass = ColorClasses[base.color as ColorIndex];
+        return (
+        <div
+          key={base.id}
+          className={`p-4 rounded-lg border-2 border-${colorClass ?? ""} shadow-sm hover:shadow-md transition-shadow`}
+        >
+          <div className="items-center space-x-4">
+            <div className="flex flex-col gap-1 pb-1">
               <div
-                className={`mb-2 bg-${colorClass ?? ""} rounded-sm h-12 w-12 flex items-center justify-center text-white font-bold text-lg`}
+                className={`bg-${colorClass ?? ""} rounded-sm h-12 w-12 flex items-center justify-center text-white font-bold text-lg`}
               >
                 {base.name.substring(0, 2)}
               </div>
-              <div>
-                <h3 className="font-semibold truncate">{base.name}</h3>
-                <p className="text-sm opacity-50 truncate">Base</p>
-              </div>
+              <h3 className="font-semibold truncate">{base.name}</h3>
             </div>
+              <p className="text-sm opacity-50 truncate">Base</p>
           </div>
-          );
-        })}
+        </div>
+        );
+      })}
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <div className="p-6 border border-dashed rounded-lg flex items-center justify-center cursor-pointer">
-              <Plus className="w-6 h-6 text-gray-200 cursor-pointer" />
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogTrigger asChild>
+          <div className="p-16 border border-dashed rounded-lg flex items-center justify-center cursor-pointer">
+            <Plus className="w-6 h-6 text-gray-200 cursor-pointer" />
+          </div>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Base</DialogTitle>
+            <DialogDescription>
+              Enter a name for your new base. This will be used to organize your data.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <input
+                id="baseName"
+                type="text"
+                value={baseName}
+                onChange={(e) => setBaseName(e.target.value)}
+                placeholder="Enter base name"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                required
+              />
             </div>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Base</DialogTitle>
-              <DialogDescription>
-                Enter a name for your new base. This will be used to organize your data.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <input
-                  id="baseName"
-                  type="text"
-                  value={baseName}
-                  onChange={(e) => setBaseName(e.target.value)}
-                  placeholder="Enter base name"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  required
-                />
-              </div>
-              <div className="flex justify-center space-x-2">
-                <button
-                  type="submit"
-                  disabled={createBaseMutation.isPending || !baseName.trim()}
-                  className="bg-primary text-white px-4 py-2 rounded hover:bg-primary disabled:opacity-50"
-                >
-                  {createBaseMutation.isPending ? 'Creating...' : 'Create Base'}
-                </button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <div className="flex justify-center space-x-2">
+              <button
+                type="submit"
+                disabled={createBase.isPending || !baseName.trim()}
+                className="bg-primary text-white px-4 py-2 rounded hover:bg-primary disabled:opacity-50"
+              >
+                {createBase.isPending ? 'Creating...' : 'Create Base'}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

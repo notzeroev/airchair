@@ -32,20 +32,15 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   let session: Session | null = null;
   
   if (authHeader?.startsWith("Bearer ")) {
-    // Extract JWT token from Bearer token
     const token = authHeader.slice(7); // Remove "Bearer " prefix
     
     if (token && token !== "undefined" && token !== "null") {
       try {
-        // Create Supabase client for server-side authentication
-        // Using @supabase/ssr with proper configuration for API routes
         const supabase = createServerClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
           {
             cookies: {
-              // For API routes, we don't have access to cookies directly
-              // This is for JWT-based authentication via headers
               getAll() {
                 return [];
               },
@@ -64,17 +59,14 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
           user = authenticatedUser;
           
           // Optionally get session data for additional context
-          // Note: getSession() is the modern method, not deprecated session()
           const { data: { session: userSession }, error: sessionError } = await supabase.auth.getSession();
           if (!sessionError && userSession) {
             session = userSession;
           }
         } else if (userError) {
-          // Log authentication errors for debugging (but don't expose to client)
           console.warn("JWT authentication failed:", userError.message);
         }
       } catch (error) {
-        // Handle unexpected errors during token validation
         console.error("Unexpected error during authentication:", error);
       }
     }
