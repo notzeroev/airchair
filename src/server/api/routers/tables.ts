@@ -1,7 +1,134 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { faker } from "@faker-js/faker";
+import { type SupabaseClient } from '@supabase/supabase-js';
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+
+// Helper function to create default columns
+const createDefaultColumns = (tableId: string) => [
+  { table_id: tableId, name: 'Name', type: 'text', position: 0 },
+  { table_id: tableId, name: 'Age', type: 'number', position: 1 },
+  { table_id: tableId, name: 'Address', type: 'text', position: 2 },
+];
+
+// Helper function to verify base access
+const verifyBaseAccess = async (
+  supabase: SupabaseClient,
+  baseId: string,
+  userId: string
+) => {
+  const { data: baseData, error: baseError } = await supabase
+    .from('bases')
+    .select('id')
+    .eq('id', baseId)
+    .eq('user_id', userId)
+    .single();
+
+  if (baseError || !baseData) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Base not found or you don't have access to it",
+    });
+  }
+  return baseData;
+};
+
+// Helper function to verify table access
+const verifyTableAccess = async (
+  supabase: SupabaseClient,
+  tableId: string,
+  userId: string
+) => {
+  const { data: tableData, error: tableError } = await supabase
+    .from('tables')
+    .select(`
+      id,
+      bases!inner(user_id)
+    `)
+    .eq('id', tableId)
+    .eq('bases.user_id', userId)
+    .single();
+
+  if (tableError || !tableData) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Table not found or you don't have access to it",
+    });
+  }
+  return tableData;
+};
+
+// Helper function to generate fake data for sample rows
+const generateSampleCellData = (columnIndex: number) => {
+  let value_text = null;
+  let value_number = null;
+
+  // Generate data based on column position: 0=Name, 1=Age, 2=Address
+  if (columnIndex === 0) { // Name
+    value_text = faker.person.fullName();
+  } else if (columnIndex === 1) { // Age
+    value_number = faker.number.int({ min: 18, max: 69 });
+  } else if (columnIndex === 2) { // Address
+    value_text = faker.location.streetAddress();
+  }
+
+  return { value_text, value_number };
+};
+
+// Helper function to create sample rows with fake data
+const createSampleRowsWithData = async (
+  supabase: SupabaseClient,
+  tableId: string,
+  insertedColumns: Array<{ id: string; type: string }>,
+  rowCount = 1
+): Promise<Array<{ id: string }>> => {
+  // Create sample rows
+  const rowsToInsert = Array(rowCount).fill(null).map(() => ({ table_id: tableId }));
+  
+  const { data: sampleRows, error: rowsError } = await supabase
+    .from('rows')
+    .insert(rowsToInsert)
+    .select('id');
+
+  if (rowsError) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR", 
+      message: `Failed to create sample rows: ${(rowsError as Error).message}`,
+    });
+  }
+
+  // Create sample cells with fake data
+  if (sampleRows && insertedColumns) {
+    const cellsToInsert: { row_id: any; column_id: any; value_text: string | null; value_number: number | null; }[] = [];
+    for (const row of sampleRows) {
+      for (let i = 0; i < insertedColumns.length; i++) {
+        const column = insertedColumns[i]!;
+        const { value_text, value_number } = generateSampleCellData(i);
+
+        cellsToInsert.push({
+          row_id: row.id,
+          column_id: column.id,
+          value_text,
+          value_number,
+        });
+      }
+    }
+
+    const { error: cellsError } = await supabase
+      .from('cells')
+      .insert(cellsToInsert);
+
+    if (cellsError) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Failed to create sample cells: ${(cellsError as Error).message}`,
+      });
+    }
+  }
+
+  return sampleRows;
+};
 
 export const tablesRouter = createTRPCRouter({
   /**
@@ -16,20 +143,8 @@ export const tablesRouter = createTRPCRouter({
       const supabase = ctx.getSupabaseClient();
       
       try {
-        // First verify the base belongs to the user
-        const { data: baseData, error: baseError } = await supabase
-          .from('bases')
-          .select('id')
-          .eq('id', input.baseId)
-          .eq('user_id', ctx.user.id)
-          .single();
-
-        if (baseError || !baseData) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Base not found or you don't have access to it",
-          });
-        }
+        // Verify base access
+        await verifyBaseAccess(supabase, input.baseId, ctx.user.id);
 
         // Fetch all tables for this base
         const { data, error } = await supabase
@@ -41,7 +156,7 @@ export const tablesRouter = createTRPCRouter({
         if (error) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to fetch tables: ${error.message}`,
+            message: `Failed to fetch tables: ${(error as Error).message}`,
             cause: error,
           });
         }
@@ -65,9 +180,29 @@ export const tablesRouter = createTRPCRouter({
           if (createError) {
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
-              message: `Failed to create default table: ${createError.message}`,
+              message: `Failed to create default table: ${(createError as Error).message}`,
               cause: createError,
             });
+          }
+
+          // Create default columns
+          const { data: insertedColumns, error: columnsError } = await supabase
+            .from('columns')
+            .insert(createDefaultColumns(newTableData.id))
+            .select('id, type');
+
+          if (columnsError) {
+            await supabase.from('tables').delete().eq('id', newTableData.id);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to create default columns: ${(columnsError as Error).message}`,
+              cause: columnsError,
+            });
+          }
+
+          // Create sample rows with fake data (2 rows for demo)
+          if (insertedColumns) {
+            await createSampleRowsWithData(supabase, newTableData.id, insertedColumns, 2);
           }
 
           tables = [{
@@ -103,20 +238,8 @@ export const tablesRouter = createTRPCRouter({
       const supabase = ctx.getSupabaseClient();
       
       try {
-        // First verify the base belongs to the user
-        const { data: baseData, error: baseError } = await supabase
-          .from('bases')
-          .select('id')
-          .eq('id', input.baseId)
-          .eq('user_id', ctx.user.id)
-          .single();
-
-        if (baseError || !baseData) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Base not found or you don't have access to it",
-          });
-        }
+        // Verify base access
+        await verifyBaseAccess(supabase, input.baseId, ctx.user.id);
 
         // Create the new table
         const { data, error } = await supabase
@@ -131,9 +254,29 @@ export const tablesRouter = createTRPCRouter({
         if (error) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to create table: ${error.message}`,
+            message: `Failed to create table: ${(error as Error).message}`,
             cause: error,
           });
+        }
+
+        // Create default columns for the new table
+        const { data: insertedColumns, error: columnsError } = await supabase
+          .from('columns')
+          .insert(createDefaultColumns(data.id))
+          .select('id, type');
+        
+        if (columnsError) {
+          await supabase.from('tables').delete().eq('id', data.id);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create default columns: ${(columnsError as Error).message}`,
+            cause: columnsError,
+          });
+        }
+
+        // Create sample row with fake data (1 row for new tables)
+        if (insertedColumns) {
+          await createSampleRowsWithData(supabase, data.id, insertedColumns, 1);
         }
 
         return {
@@ -148,6 +291,745 @@ export const tablesRouter = createTRPCRouter({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "An unexpected error occurred while creating the table",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Get table data including columns and rows with cells
+   */
+  getTableData: protectedProcedure
+    .input(z.object({
+      tableId: z.string().uuid("Invalid table ID format"),
+    }))
+    .query(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // First verify the table belongs to a base owned by the user
+        const { data: tableData, error: tableError } = await supabase
+          .from('tables')
+          .select(`
+            id,
+            name,
+            bases!inner(user_id)
+          `)
+          .eq('id', input.tableId)
+          .eq('bases.user_id', ctx.user.id)
+          .single();
+
+        if (tableError || !tableData) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Table not found or you don't have access to it",
+          });
+        }
+
+        // Get columns
+        const { data: columns, error: columnsError } = await supabase
+          .from('columns')
+          .select('id, name, type, position')
+          .eq('table_id', input.tableId)
+          .order('position', { ascending: true });
+
+        if (columnsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch columns: ${(columnsError as Error).message}`,
+          });
+        }
+
+        // Get rows with cells
+        const { data: rows, error: rowsError } = await supabase
+          .from('rows')
+          .select(`
+            id,
+            cells(
+              id,
+              column_id,
+              value_text,
+              value_number
+            )
+          `)
+          .eq('table_id', input.tableId)
+          .order('created_at', { ascending: true });
+
+        if (rowsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch rows: ${(rowsError as Error).message}`,
+          });
+        }
+
+        return {
+          columns: columns || [],
+          rows: rows || [],
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while fetching table data",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Add a new row to a table
+   */
+  addRow: protectedProcedure
+    .input(z.object({
+      tableId: z.string().uuid("Invalid table ID format"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // Verify table access
+        await verifyTableAccess(supabase, input.tableId, ctx.user.id);
+
+        // Create a new row
+        const { data: newRow, error: rowError } = await supabase
+          .from('rows')
+          .insert({ table_id: input.tableId })
+          .select('id')
+          .single();
+
+        if (rowError || !newRow) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create row: ${(rowError as Error)?.message}`,
+          });
+        }
+
+        // Get all columns for this table to create empty cells
+        const { data: columns, error: columnsError } = await supabase
+          .from('columns')
+          .select('id, type')
+          .eq('table_id', input.tableId);
+
+        if (columnsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch columns: ${(columnsError as Error).message}`,
+          });
+        }
+
+        // Create empty cells for each column
+        if (columns && columns.length > 0) {
+          const cellsToInsert = columns.map((column) => ({
+            row_id: newRow.id,
+            column_id: column.id,
+            value_text: column.type === 'text' ? '' : null,
+            value_number: null,
+          }));
+
+          const { error: cellsError } = await supabase
+            .from('cells')
+            .insert(cellsToInsert);
+
+          if (cellsError) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to create cells: ${(cellsError as Error).message}`,
+            });
+          }
+        }
+
+        return { id: newRow.id };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while adding row",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Delete a row and all its cells
+   */
+  deleteRow: protectedProcedure
+    .input(z.object({
+      rowId: z.string().uuid("Invalid row ID format"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // Verify row access through table and base ownership
+        const { data: rowData, error: rowError } = await supabase
+          .from('rows')
+          .select(`
+            id,
+            tables!inner(
+              bases!inner(user_id)
+            )
+          `)
+          .eq('id', input.rowId)
+          .eq('tables.bases.user_id', ctx.user.id)
+          .single();
+
+        if (rowError || !rowData) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Row not found or you don't have access to it",
+          });
+        }
+
+        // Delete all cells for this row first
+        const { error: cellsError } = await supabase
+          .from('cells')
+          .delete()
+          .eq('row_id', input.rowId);
+
+        if (cellsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to delete cells: ${(cellsError as Error).message}`,
+          });
+        }
+
+        // Delete the row
+        const { error: deleteError } = await supabase
+          .from('rows')
+          .delete()
+          .eq('id', input.rowId);
+
+        if (deleteError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to delete row: ${(deleteError as Error).message}`,
+          });
+        }
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while deleting row",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Add a new column to a table
+   */
+  addColumn: protectedProcedure
+    .input(z.object({
+      tableId: z.string().uuid("Invalid table ID format"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // Verify table access
+        await verifyTableAccess(supabase, input.tableId, ctx.user.id);
+
+        // Get the highest position to set the new column position
+        const { data: maxPosition } = await supabase
+          .from('columns')
+          .select('position')
+          .eq('table_id', input.tableId)
+          .order('position', { ascending: false })
+          .limit(1)
+          .single();
+
+        const newPosition = (maxPosition?.position ?? -1) + 1;
+
+        // Create new column
+        const { data: newColumn, error: columnError } = await supabase
+          .from('columns')
+          .insert({
+            table_id: input.tableId,
+            name: 'New Column',
+            type: 'text',
+            position: newPosition,
+          })
+          .select('id')
+          .single();
+
+        if (columnError || !newColumn) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create column: ${(columnError as Error)?.message}`,
+          });
+        }
+
+        // Get all existing rows for this table
+        const { data: rows, error: rowsError } = await supabase
+          .from('rows')
+          .select('id')
+          .eq('table_id', input.tableId);
+
+        if (rowsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch rows: ${(rowsError as Error).message}`,
+          });
+        }
+
+        // Create empty cells for each existing row
+        if (rows && rows.length > 0) {
+          const cellsToInsert = rows.map((row) => ({
+            row_id: row.id,
+            column_id: newColumn.id,
+            value_text: '',
+            value_number: null,
+          }));
+
+          const { error: cellsError } = await supabase
+            .from('cells')
+            .insert(cellsToInsert);
+
+          if (cellsError) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to create cells: ${(cellsError as Error).message}`,
+            });
+          }
+        }
+
+        return { id: newColumn.id };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while adding column",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Delete a column and all its cells
+   */
+  deleteColumn: protectedProcedure
+    .input(z.object({
+      columnId: z.string().uuid("Invalid column ID format"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // Verify column access through table and base ownership
+        const { data: columnData, error: columnError } = await supabase
+          .from('columns')
+          .select(`
+            id,
+            tables!inner(
+              bases!inner(user_id)
+            )
+          `)
+          .eq('id', input.columnId)
+          .eq('tables.bases.user_id', ctx.user.id)
+          .single();
+
+        if (columnError || !columnData) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Column not found or you don't have access to it",
+          });
+        }
+
+        // Delete all cells for this column first
+        const { error: cellsError } = await supabase
+          .from('cells')
+          .delete()
+          .eq('column_id', input.columnId);
+
+        if (cellsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to delete cells: ${(cellsError as Error).message}`,
+          });
+        }
+
+        // Delete the column
+        const { error: deleteError } = await supabase
+          .from('columns')
+          .delete()
+          .eq('id', input.columnId);
+
+        if (deleteError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to delete column: ${(deleteError as Error).message}`,
+          });
+        }
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while deleting column",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Update a column's name and/or type
+   */
+  updateColumn: protectedProcedure
+    .input(z.object({
+      columnId: z.string().uuid("Invalid column ID format"),
+      name: z.string().min(1, "Column name cannot be empty").optional(),
+      type: z.enum(["text", "number"]).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // Verify column access through table and base ownership
+        const { data: columnData, error: columnError } = await supabase
+          .from('columns')
+          .select(`
+            id,
+            type,
+            tables!inner(
+              bases!inner(user_id)
+            )
+          `)
+          .eq('id', input.columnId)
+          .eq('tables.bases.user_id', ctx.user.id)
+          .single();
+
+        if (columnError || !columnData) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Column not found or you don't have access to it",
+          });
+        }
+
+        // Build update object
+        const updates: { name?: string; type?: string } = {};
+        if (input.name !== undefined) updates.name = input.name;
+        if (input.type !== undefined) updates.type = input.type;
+
+        if (Object.keys(updates).length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "No updates provided",
+          });
+        }
+
+        // Update the column
+        const { error: updateError } = await supabase
+          .from('columns')
+          .update(updates)
+          .eq('id', input.columnId);
+
+        if (updateError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to update column: ${(updateError as Error).message}`,
+          });
+        }
+
+        // If type changed, we need to update all cells in this column
+        if (input.type && input.type !== columnData.type) {
+          if (input.type === "text") {
+            // Convert number to text - fetch and update individually
+            const { data: cells, error: fetchError } = await supabase
+              .from('cells')
+              .select('id, value_number')
+              .eq('column_id', input.columnId)
+              .not('value_number', 'is', null);
+
+            if (fetchError) {
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Failed to fetch cells for conversion: ${(fetchError as Error).message}`,
+              });
+            }
+
+            if (cells) {
+              for (const cell of cells) {
+                await supabase
+                  .from('cells')
+                  .update({ 
+                    value_text: cell.value_number?.toString() ?? '',
+                    value_number: null 
+                  })
+                  .eq('id', cell.id);
+              }
+            }
+          } else if (input.type === "number") {
+            // Convert text to number (only if it's a valid number)
+            const { data: cells, error: fetchError } = await supabase
+              .from('cells')
+              .select('id, value_text')
+              .eq('column_id', input.columnId)
+              .not('value_text', 'is', null);
+
+            if (fetchError) {
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Failed to fetch cells for conversion: ${(fetchError as Error).message}`,
+              });
+            }
+
+            if (cells) {
+              for (const cell of cells) {
+                const numValue = parseFloat(cell.value_text ?? '');
+                if (!isNaN(numValue)) {
+                  await supabase
+                    .from('cells')
+                    .update({ 
+                      value_number: numValue,
+                      value_text: null 
+                    })
+                    .eq('id', cell.id);
+                } else {
+                  // If can't convert to number, set to 0
+                  await supabase
+                    .from('cells')
+                    .update({ 
+                      value_number: 0,
+                      value_text: null 
+                    })
+                    .eq('id', cell.id);
+                }
+              }
+            }
+          }
+        }
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while updating column",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Update a cell value
+   */
+  updateCell: protectedProcedure
+    .input(z.object({
+      cellId: z.string().uuid("Invalid cell ID format"),
+      value: z.string(),
+      columnType: z.enum(["text", "number"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // Verify cell access through table and base ownership
+        const { data: cellData, error: cellError } = await supabase
+          .from('cells')
+          .select(`
+            id,
+            rows!inner(
+              tables!inner(
+                bases!inner(user_id)
+              )
+            )
+          `)
+          .eq('id', input.cellId)
+          .eq('rows.tables.bases.user_id', ctx.user.id)
+          .single();
+
+        if (cellError || !cellData) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Cell not found or you don't have access to it",
+          });
+        }
+
+        // Parse and validate the value based on column type
+        const updateData: { value_text?: string | null; value_number?: number | null } = {};
+        
+        if (input.columnType === 'text') {
+          updateData.value_text = input.value;
+          updateData.value_number = null;
+        } else if (input.columnType === 'number') {
+          updateData.value_text = null;
+          if (input.value.trim() === '') {
+            updateData.value_number = null;
+          } else {
+            const numValue = parseFloat(input.value);
+            if (isNaN(numValue)) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Invalid number format",
+              });
+            }
+            updateData.value_number = numValue;
+          }
+        }
+
+        // Update the cell
+        const { error: updateError } = await supabase
+          .from('cells')
+          .update(updateData)
+          .eq('id', input.cellId);
+
+        if (updateError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to update cell: ${(updateError as Error).message}`,
+          });
+        }
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while updating cell",
+          cause: error,
+        });
+      }
+    }),
+
+  /**
+   * Add 100 rows to a table with appropriate data
+   */
+  add100Rows: protectedProcedure
+    .input(z.object({
+      tableId: z.string().uuid("Invalid table ID format"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      try {
+        // Verify table access
+        await verifyTableAccess(supabase, input.tableId, ctx.user.id);
+
+        // Get all columns for this table to determine their types and names
+        const { data: columns, error: columnsError } = await supabase
+          .from('columns')
+          .select('id, name, type, position')
+          .eq('table_id', input.tableId)
+          .order('position', { ascending: true });
+
+        if (columnsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch columns: ${(columnsError as Error).message}`,
+          });
+        }
+
+        if (!columns || columns.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Table has no columns",
+          });
+        }
+
+        // Check if default columns are present (Name, Age, Address)
+        const hasDefaultColumns = columns.some(col => col.name === 'Name') &&
+                                 columns.some(col => col.name === 'Age') &&
+                                 columns.some(col => col.name === 'Address');
+
+        // Create 100 rows
+        const rowsToInsert = Array(100).fill(null).map(() => ({ table_id: input.tableId }));
+        
+        const { data: newRows, error: rowsError } = await supabase
+          .from('rows')
+          .insert(rowsToInsert)
+          .select('id');
+
+        if (rowsError || !newRows) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR", 
+            message: `Failed to create rows: ${(rowsError as Error)?.message}`,
+          });
+        }
+
+        // Generate cells with appropriate data
+        const cellsToInsert: { row_id: any; column_id: any; value_text: string | null; value_number: number | null; }[] = [];
+        
+        for (const row of newRows) {
+          for (const column of columns) {
+            let value_text: string | null = null;
+            let value_number: number | null = null;
+
+            // Generate data based on column type and name
+            if (hasDefaultColumns) {
+              if (column.name === 'Name') {
+                value_text = faker.person.fullName();
+              } else if (column.name === 'Age') {
+                value_number = faker.number.int({ min: 18, max: 69 });
+              } else if (column.name === 'Address') {
+                value_text = faker.location.streetAddress();
+              }
+            } else {
+              // Fallback for non-default columns
+              if (column.type === 'text') {
+                value_text = faker.lorem.words(3);
+              } else if (column.type === 'number') {
+                value_number = faker.number.int({ min: 1, max: 1000 });
+              }
+            }
+
+            cellsToInsert.push({
+              row_id: row.id,
+              column_id: column.id,
+              value_text,
+              value_number,
+            });
+          }
+        }
+
+        // Insert all cells
+        const { error: cellsError } = await supabase
+          .from('cells')
+          .insert(cellsToInsert);
+
+        if (cellsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create cells: ${(cellsError as Error).message}`,
+          });
+        }
+
+        return { 
+          success: true, 
+          rowsCreated: newRows.length,
+          hasDefaultColumns 
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while adding 100 rows",
           cause: error,
         });
       }
