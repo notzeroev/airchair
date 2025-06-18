@@ -10,121 +10,107 @@ interface EditableCellProps {
   tableId: string;
 }
 
+const toStr = (val: string | number | null) => String(val ?? "");
+
 export function EditableCell({ cellId, value, columnType, tableId }: EditableCellProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSelected, setIsSelected] = useState(false);
-  const [editValue, setEditValue] = useState(String(value ?? ""));
+  type Mode = "idle" | "selected" | "editing";
+  const [mode, setMode] = useState<Mode>("idle");
+  const [editValue, setEditValue] = useState(toStr(value));
   const inputRef = useRef<HTMLInputElement>(null);
   const cellRef = useRef<HTMLDivElement>(null);
-  
+
   const utils = api.useUtils();
-  
+
   const updateCell = api.tables.updateCell.useMutation({
     onSuccess: () => {
       void utils.tables.getTableData.invalidate({ tableId });
-      setIsEditing(false);
-      setIsSelected(true);
+      setMode("selected");
     },
     onError: (error) => {
       console.error("Failed to update cell:", error.message);
-      // Reset to original value on error
-      setEditValue(String(value ?? ""));
-      setIsEditing(false);
+      setEditValue(toStr(value));
+      setMode("selected");
     },
   });
 
   useEffect(() => {
-    if (isEditing && inputRef.current) {
+    setEditValue(toStr(value)); // Sync with latest value from server
+  }, [value]);
+
+  useEffect(() => {
+    if (mode === "editing" && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
-  }, [isEditing]);
+  }, [mode]);
 
-  // Handle clicking outside to deselect
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (cellRef.current && !cellRef.current.contains(event.target as Node)) {
-        setIsSelected(false);
+        setMode("idle");
       }
     };
+    if (mode !== "idle") {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [mode]);
 
+  useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
-      if (isSelected && !isEditing) {
-        // F2 to edit
-        if (event.key === 'F2') {
+      if (mode === "selected") {
+        if (event.key === "F2") {
           event.preventDefault();
-          setEditValue(String(value ?? ""));
-          setIsEditing(true);
-        }
-        // Any printable character starts editing with that character
-        else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          setEditValue(toStr(value));
+          setMode("editing");
+        } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
           event.preventDefault();
           setEditValue(event.key);
-          setIsEditing(true);
-        }
-        // Delete/Backspace clears the cell
-        else if (event.key === 'Delete' || event.key === 'Backspace') {
+          setMode("editing");
+        } else if (event.key === "Delete" || event.key === "Backspace") {
           event.preventDefault();
-          updateCell.mutate({
-            cellId,
-            value: '',
-            columnType,
-          });
+          updateCell.mutate({ cellId, value: "", columnType });
+          setMode("idle");
         }
       }
     };
-
-    if (isSelected) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleKeyPress);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-        document.removeEventListener('keydown', handleKeyPress);
-      };
+    if (mode !== "idle") {
+      document.addEventListener("keydown", handleKeyPress);
+      return () => document.removeEventListener("keydown", handleKeyPress);
     }
-  }, [isSelected, isEditing, value, cellId, columnType, updateCell]);
+  }, [mode, value, cellId, columnType, updateCell]);
 
-  const handleClick = () => {
-    setIsSelected(true);
-  };
+  const handleClick = () => setMode("selected");
 
   const handleDoubleClick = () => {
-    setEditValue(String(value ?? ""));
-    setIsEditing(true);
-    setIsSelected(true);
+    setEditValue(toStr(value));
+    setMode("editing");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
       handleSave();
     } else if (e.key === "Escape") {
       e.preventDefault();
-      setEditValue(String(value ?? ""));
-      setIsEditing(false);
-    } else if (e.key === "Tab") {
-      e.preventDefault();
-      handleSave();
+      setEditValue(toStr(value));
+      setMode("selected");
     }
   };
 
-  const handleBlur = () => {
-    handleSave();
-  };
+  const handleBlur = () => handleSave();
 
   const handleSave = () => {
-    if (editValue !== String(value ?? "")) {
-      updateCell.mutate({
-        cellId,
-        value: editValue,
-        columnType,
-      });
+    if (editValue !== toStr(value)) {
+      if (columnType === "number" && isNaN(Number(editValue))) return;
+      updateCell.mutate({ cellId, value: editValue, columnType });
     } else {
-      setIsEditing(false);
+      setMode("selected");
     }
   };
 
-  const displayValue = value === null || value === "" ? "" : String(value);
+  const isSelected = mode === "selected" || mode === "editing";
+  const isEditing = mode === "editing";
 
   if (isEditing) {
     return (
@@ -147,19 +133,18 @@ export function EditableCell({ cellId, value, columnType, tableId }: EditableCel
     <div
       ref={cellRef}
       className={`w-full h-full px-1 py-0.5 min-h-[24px] flex items-center cursor-text transition-all duration-150 ${
-        isSelected 
-          ? 'bg-blue-50 ring-2 ring-blue-500 dark:bg-blue-950/50' 
-          : 'hover:bg-muted/25'
-      } ${updateCell.isPending ? 'opacity-50' : ''}`}
+        isSelected
+          ? "bg-blue-50 ring-2 ring-blue-500 dark:bg-blue-950/50"
+          : "hover:bg-muted/25"
+      } ${updateCell.isPending ? "opacity-50" : ""}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      title={displayValue || "Click to select, double-click to edit, F2 to edit, or just start typing"}
+      title={editValue || ""}
     >
-      {displayValue ? (
-        <span className={`truncate ${updateCell.isPending ? 'opacity-70' : ''}`}>{displayValue}</span>
+      {editValue ? (
+        <span className={`truncate ${updateCell.isPending ? "opacity-70" : ""}`}>{editValue}</span>
       ) : (
-        <span className="text-muted-foreground italic text-xs">
-        </span>
+        <span className="text-muted-foreground italic text-xs"></span>
       )}
       {updateCell.isPending && (
         <div className="ml-1 w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>

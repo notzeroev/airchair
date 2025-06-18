@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-table";
 import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit3, Trash2 } from "lucide-react";
+import { Plus, Edit3, Trash2, Text, SquareSigma } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -145,7 +145,11 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
       id: col.id,
       header: () => (
         <div className="flex items-center justify-between group px-2 overflow-hidden">
-          <span className="font-semibold text-sm truncate flex-1 min-w-0">{col.name}</span>
+          <span className="flex items-center gap-2 font-semibold text-sm truncate flex-1 min-w-0">
+            {col.type === "text" && <Text className="h-4 w-4 text-muted-foreground" />}
+            {col.type === "number" && <SquareSigma className="h-4 w-4 text-muted-foreground" />}
+            {col.name}
+          </span>
           <Button
             variant="ghost"
             size="sm"
@@ -270,7 +274,7 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
                         className={`text-left font-medium text-sm ${
                           isIndexColumn || isActionsColumn
                             ? "w-16 min-w-16 max-w-16 p-0" 
-                            : "w-40 min-w-40 max-w-40 border-r border-border last:border-r-0 py-2"
+                            : "w-42 min-w-42 max-w-42 border-r border-border last:border-r-0 py-2"
                         }`}
                       >
                         {header.isPlaceholder
@@ -296,11 +300,7 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
                     return (
                       <td 
                         key={cell.id} 
-                        className={`p-0 overflow-hidden ${
-                          isIndexColumn || isActionsColumn
-                            ? "w-16 min-w-16 max-w-16" 
-                            : " w-40 min-w-40 max-w-40 border-r border-border last:border-r-0"
-                        }`}
+                        className="p-0 overflow-hidden border-r border-border last:border-r-0"
                       >
                         <div className="truncate">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
