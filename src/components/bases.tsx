@@ -12,7 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import { Button } from "./ui/button";
 
 export function BaseTable() {
   const [baseName, setBaseName] = useState("");
@@ -30,7 +31,10 @@ export function BaseTable() {
       alert(`Error creating base: ${error.message}`);
     },
   });
-
+  const deleteBase = api.bases.delete.useMutation({
+    onSuccess: () => void bases.refetch(),
+    onError: (error) => alert(`Error deleting base: ${error.message}`),
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,32 +57,49 @@ export function BaseTable() {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 auto-rows-fr gap-4">
-      { bases.data?.map((base) => {
+      {bases.data?.map((base) => {
         const colorClass = ColorClasses[base.color as ColorIndex];
         return (
-        <Link 
-          key={base.id} 
-          href={`/base/${base.id}`}
-          className={`block p-4 rounded-lg border-2 border-${colorClass ?? ""} shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
-        >
-          <div className="items-center space-x-4">
-            <div className="flex flex-col gap-1 pb-1">
-              <div
-                className={`bg-${colorClass ?? ""} rounded-sm h-12 w-12 flex items-center justify-center text-white font-bold text-lg`}
-              >
-                {base.name.substring(0, 2)}
+          <div key={base.id} className="relative group h-full">
+            {/* Bin icon (top left, only on hover) */}
+            <Button
+              variant={"ghost"}
+              className="absolute top-3 right-3 z-10 opacity-0 h-6 w-6 p-0 group-hover:opacity-50 hover:opacity-100 hover:text-destructive"
+              title="Delete base"
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (confirm(`Delete base '${base.name}'? This cannot be undone.`)) {
+                  deleteBase.mutate({ baseId: String(base.id) });
+                }
+              }}
+              disabled={deleteBase.isPending}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+            <Link
+              href={`/base/${base.id}`}
+              className={`block p-4 rounded-lg border-2 shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
+            >
+              <div className="items-center space-x-4">
+                <div className="flex flex-col gap-1 pb-1">
+                  <div
+                    className={`bg-${colorClass ?? ""} rounded-sm h-12 w-12 flex items-center justify-center text-white font-bold text-lg`}
+                  >
+                    {base.name.substring(0, 2)}
+                  </div>
+                  <h3 className="font-semibold truncate">{base.name}</h3>
+                </div>
+                <p className="text-sm opacity-50 truncate">Base</p>
               </div>
-              <h3 className="font-semibold truncate">{base.name}</h3>
-            </div>
-              <p className="text-sm opacity-50 truncate">Base</p>
+            </Link>
           </div>
-        </Link>
         );
       })}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogTrigger asChild>
-          <div className="p-16 border border-dashed rounded-lg flex items-center justify-center cursor-pointer">
+          <div className="border border-dashed rounded-lg flex items-center justify-center cursor-pointer">
             <Plus className="w-6 h-6 text-gray-200 cursor-pointer" />
           </div>
         </DialogTrigger>
