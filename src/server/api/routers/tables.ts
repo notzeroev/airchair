@@ -456,77 +456,6 @@ export const tablesRouter = createTRPCRouter({
     }),
 
   /**
-   * Delete a row and all its cells
-   */
-  deleteRow: protectedProcedure
-    .input(z.object({
-      rowId: z.string().uuid("Invalid row ID format"),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      const supabase = ctx.getSupabaseClient();
-
-      try {
-        // Verify row access through table and base ownership
-        const { data: rowData, error: rowError } = await supabase
-          .from('rows')
-          .select(`
-            id,
-            tables!inner(
-              bases!inner(user_id)
-            )
-          `)
-          .eq('id', input.rowId)
-          .eq('tables.bases.user_id', ctx.user.id)
-          .single();
-
-        if (rowError || !rowData) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Row not found or you don't have access to it",
-          });
-        }
-
-        // Delete all cells for this row first
-        const { error: cellsError } = await supabase
-          .from('cells')
-          .delete()
-          .eq('row_id', input.rowId);
-
-        if (cellsError) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to delete cells: ${(cellsError as Error).message}`,
-          });
-        }
-
-        // Delete the row
-        const { error: deleteError } = await supabase
-          .from('rows')
-          .delete()
-          .eq('id', input.rowId);
-
-        if (deleteError) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to delete row: ${(deleteError as Error).message}`,
-          });
-        }
-
-        return { success: true };
-      } catch (error) {
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-        
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "An unexpected error occurred while deleting row",
-          cause: error,
-        });
-      }
-    }),
-
-  /**
    * Add a new column to a table
    */
   addColumn: protectedProcedure
@@ -950,11 +879,6 @@ export const tablesRouter = createTRPCRouter({
           });
         }
 
-        // Check if default columns are present (Name, Age, Address)
-        const hasDefaultColumns = columns.some(col => col.name === 'Name') &&
-                                 columns.some(col => col.name === 'Age') &&
-                                 columns.some(col => col.name === 'Address');
-
         // Create 100 rows
         const rowsToInsert = Array(100).fill(null).map(() => ({ table_id: input.tableId }));
         
@@ -978,22 +902,16 @@ export const tablesRouter = createTRPCRouter({
             let value_text: string | null = null;
             let value_number: number | null = null;
 
-            // Generate data based on column type and name
-            if (hasDefaultColumns) {
-              if (column.name === 'Name') {
-                value_text = faker.person.fullName();
-              } else if (column.name === 'Age') {
-                value_number = faker.number.int({ min: 18, max: 69 });
-              } else if (column.name === 'Address') {
-                value_text = faker.location.streetAddress();
-              }
-            } else {
-              // Fallback for non-default columns
-              if (column.type === 'text') {
-                value_text = faker.lorem.words(3);
-              } else if (column.type === 'number') {
-                value_number = faker.number.int({ min: 1, max: 1000 });
-              }
+            if (column.name === 'Name') {
+              value_text = faker.person.fullName();
+            } else if (column.name === 'Age') {
+              value_number = faker.number.int({ min: 18, max: 69 });
+            } else if (column.name === 'Address') {
+              value_text = faker.location.streetAddress();
+            } else if (column.type === 'text') {
+              value_text = faker.lorem.words(3);
+            } else if (column.type === 'number') {
+              value_number = faker.number.int({ min: 1, max: 1000 });
             }
 
             cellsToInsert.push({
@@ -1019,8 +937,7 @@ export const tablesRouter = createTRPCRouter({
 
         return { 
           success: true, 
-          rowsCreated: newRows.length,
-          hasDefaultColumns 
+          rowsCreated: newRows.length
         };
       } catch (error) {
         if (error instanceof TRPCError) {

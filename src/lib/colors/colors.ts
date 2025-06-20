@@ -7,11 +7,11 @@ export enum ColorIndex {
 }
 
 export const ColorClasses: Record<ColorIndex, string> = {
-    [ColorIndex.Red]: 'red-500',
-    [ColorIndex.Blue]: 'blue-500',
-    [ColorIndex.Green]: 'green-500',
-    [ColorIndex.Yellow]: 'yellow-500',
-    [ColorIndex.Purple]: 'purple-500',
+    [ColorIndex.Red]: 'bg-red-500',
+    [ColorIndex.Blue]: 'bg-blue-500',
+    [ColorIndex.Green]: 'bg-green-500',
+    [ColorIndex.Yellow]: 'bg-yellow-500',
+    [ColorIndex.Purple]: 'bg-purple-500',
 };
 
 export function getRandomColor(): ColorIndex {

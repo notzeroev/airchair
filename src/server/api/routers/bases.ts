@@ -94,6 +94,47 @@ export const basesRouter = createTRPCRouter({
       }
     }),
 
+    /**
+     * Get a base by ID
+     * Protected query - requires authentication
+     */
+    getById: protectedProcedure
+      .input(z.object({ baseId: z.string().uuid("Invalid base ID format") }))
+      .query(async ({ input, ctx }) => {
+        const supabase = ctx.getSupabaseClient();
+        try {
+          const { data, error } = await supabase
+            .from('bases')
+            .select('id, name, color')
+            .eq('id', input.baseId)
+            .single();
+
+          if (error) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to fetch base: ${error.message}`,
+              cause: error,
+            });
+          }
+
+          return {
+            id: data.id as number,
+            name: data.name as string,
+            color: data.color as number,
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) {
+            throw error;
+          }
+
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "An unexpected error occurred while fetching the base",
+            cause: error,
+          });
+        }
+      }),
+
   /**
    * Delete a base by ID (and all its tables, columns, rows, and cells)
    * Protected mutation - requires authentication

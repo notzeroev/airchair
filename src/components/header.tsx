@@ -13,10 +13,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useLayoutContext } from "@/context/LayoutProvider";
 
 export const Header = () => {
+  const { colorClass: contextColorClass } = useLayoutContext();
+  const colorClass = contextColorClass ?? 'bg-primary';
+
   return (
-    <header className="flex items-center justify-between px-6 py-4 bg-primary">
+    <header className={`flex items-center justify-between px-6 py-4 ${colorClass}`}>
       <Link href={'/dashboard'}>
         <div className='h-6 w-6 flex items-center justify-center'>
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="70.1703 95.216 176.9161 229.2266" width="176.916px" height="229.227px">
@@ -30,7 +34,7 @@ export const Header = () => {
       <div className='flex items-center gap-4'>
         <DropdownMenu>
           <DropdownMenuTrigger>
-            <div className='border-2 rounded-full border-white'>
+            <div className='border-1 rounded-full border-white'>
               <CurrentUserAvatar />
             </div>
           </DropdownMenuTrigger>
