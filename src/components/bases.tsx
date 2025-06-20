@@ -84,7 +84,7 @@ export function BaseTable() {
               <div className="items-center space-x-4">
                 <div className="flex flex-col gap-1 pb-1">
                   <div
-                    className={`bg-${colorClass ?? ""} rounded-sm h-12 w-12 flex items-center justify-center text-white font-bold text-lg`}
+                    className={`${colorClass} rounded-sm h-12 w-12 flex items-center justify-center text-white font-bold text-lg`}
                   >
                     {base.name.substring(0, 2)}
                   </div>
@@ -100,7 +100,7 @@ export function BaseTable() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogTrigger asChild>
           <div className="border border-dashed rounded-lg flex items-center justify-center cursor-pointer">
-            <Plus className="w-6 h-6 text-gray-200 cursor-pointer" />
+            <Plus className="min-h-24 w-6 h-6 text-gray-200 cursor-pointer" />
           </div>
         </DialogTrigger>
         <DialogContent>

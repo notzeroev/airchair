@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { EditableCell } from "./editable-cell";
+import { Cell } from "./cell";
 
 interface DynamicTableProps {
   tableId: string;
@@ -44,49 +44,46 @@ interface Row {
 }
 
 export function DynamicTable({ tableId }: DynamicTableProps) {
-  // Modal state
-  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<Column | null>(null);
-  const [columnName, setColumnName] = useState<string>("");
+  const [columnName, setColumnName] = useState("");
   const [columnType, setColumnType] = useState<"text" | "number">("text");
+  
+  // Simplified cell state management
+  const [activeCell, setActiveCell] = useState<{
+    cellId: string;
+    rowIndex: number;
+    columnIndex: number;
+  } | null>(null);
 
-  // Fetch table data
+  // --- Add editing state for cell editing ---
+  const [editingCell, setEditingCell] = useState<{
+    cellId: string;
+    rowIndex: number;
+    columnIndex: number;
+  } | null>(null);
+
   const { data: tableData, isLoading, error } = api.tables.getTableData.useQuery(
     { tableId },
     { enabled: !!tableId }
   );
 
-  // Mutations
   const utils = api.useUtils();
-  
+
   const addRowMutation = api.tables.addRow.useMutation({
-    onSuccess: () => {
-      void utils.tables.getTableData.invalidate({ tableId });
-    },
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
   });
 
   const add100RowsMutation = api.tables.add100Rows.useMutation({
-    onSuccess: () => {
-      void utils.tables.getTableData.invalidate({ tableId });
-    },
-  });
-
-  const deleteRowMutation = api.tables.deleteRow.useMutation({
-    onSuccess: () => {
-      void utils.tables.getTableData.invalidate({ tableId });
-    },
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
   });
 
   const addColumnMutation = api.tables.addColumn.useMutation({
-    onSuccess: () => {
-      void utils.tables.getTableData.invalidate({ tableId });
-    },
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
   });
 
   const deleteColumnMutation = api.tables.deleteColumn.useMutation({
-    onSuccess: () => {
-      void utils.tables.getTableData.invalidate({ tableId });
-    },
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
   });
 
   const updateColumnMutation = api.tables.updateColumn.useMutation({
@@ -97,7 +94,44 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
     },
   });
 
-  // Modal handlers
+  // --- Cell update mutation with optimistic update ---
+  const updateCellMutation = api.tables.updateCell.useMutation({
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
+    onSettled: () => void utils.tables.getTableData.invalidate({ tableId }),
+  });
+
+  // --- Cell editing handlers ---
+  const handleCellEditStart = (cellId: string, rowIndex: number, columnIndex: number) => {
+    setEditingCell({ cellId, rowIndex, columnIndex });
+    setActiveCell({ cellId, rowIndex, columnIndex });
+  };
+  const handleCellEditEnd = (cellId: string, columnType: "text" | "number", newValue: string) => {
+    setEditingCell(null);
+
+    let currentValue: string | number | null = null;
+
+    for (const row of tableData?.rows || []) {
+      for (const cell of row.cells) {
+        if (cell.id === cellId) {
+          currentValue = columnType === "text" ? cell.value_text : cell.value_number;
+
+          // Optimistically update the value
+          if (columnType === "text") {
+            cell.value_text = newValue;
+          } else {
+            cell.value_number = Number(newValue);
+          }
+        }
+      }
+    }
+
+    const currentValueStr = currentValue === null || currentValue === undefined ? "" : String(currentValue);
+
+    if (currentValueStr !== newValue) {
+      updateCellMutation.mutate({ cellId, value: newValue, columnType });
+    }
+  };
+
   const handleEditColumn = useCallback((column: Column) => {
     setEditingColumn(column);
     setColumnName(column.name);
@@ -107,41 +141,104 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
 
   const handleSaveColumn = () => {
     if (!editingColumn) return;
-    
-    updateColumnMutation.mutate({
-      columnId: editingColumn.id,
-      name: columnName,
-      type: columnType,
-    });
+    updateColumnMutation.mutate({ columnId: editingColumn.id, name: columnName, type: columnType });
   };
 
   const handleDeleteColumn = () => {
     if (!editingColumn) return;
-    
     deleteColumnMutation.mutate({ columnId: editingColumn.id });
     setIsEditModalOpen(false);
     setEditingColumn(null);
   };
 
-  // Create table columns dynamically
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  const handleCellActivate = useCallback((cellId: string, rowIndex: number, columnIndex: number) => {
+    setActiveCell({ cellId, rowIndex, columnIndex });
+  }, []);
+
+  const clearActiveCell = useCallback(() => {
+    setActiveCell(null);
+    setEditingCell(null);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tableRef.current && !tableRef.current.contains(event.target as Node)) {
+        clearActiveCell();
+        setEditingCell(null); // Also clear editing state when clicking outside
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [clearActiveCell]);
+
+  const handleTableKeyDown = (event: React.KeyboardEvent<HTMLTableElement>) => {
+    // Don't handle navigation if any cell is being edited
+    if (editingCell) return;
+    
+    if (!activeCell || !tableData?.rows) return;
+
+    const maxRows = tableData.rows.length;
+    const maxCols = tableData.columns?.length || 0;
+
+    let newRow = activeCell.rowIndex;
+    let newCol = activeCell.columnIndex;
+
+    switch (event.key) {
+      case "Tab":
+        if (event.shiftKey) {
+          newCol = Math.max(newCol - 1, 0);
+        } else {
+          newCol = Math.min(newCol + 1, maxCols - 1);
+        }
+        break;
+      case "ArrowRight": 
+        newCol = Math.min(newCol + 1, maxCols - 1); 
+        break;
+      case "ArrowLeft": 
+        newCol = Math.max(newCol - 1, 0); 
+        break;
+      case "ArrowDown": 
+        newRow = Math.min(newRow + 1, maxRows - 1); 
+        break;
+      case "ArrowUp": 
+        newRow = Math.max(newRow - 1, 0); 
+        break;
+      default: 
+        return;
+    }
+
+    // Find the cell at the new position
+    const targetRow = tableData.rows[newRow];
+    if (targetRow && tableData.columns) {
+      const targetColumn = tableData.columns[newCol];
+      if (targetColumn) {
+        const targetCell = targetRow.cells.find(c => c.column_id === targetColumn.id);
+        if (targetCell) {
+          setActiveCell({
+            cellId: targetCell.id,
+            rowIndex: newRow,
+            columnIndex: newCol,
+          });
+          event.preventDefault();
+        }
+      }
+    }
+  };
+
   const columns = useMemo<ColumnDef<Row>[]>(() => {
     if (!tableData?.columns) return [];
 
-    // Index column
     const indexColumn: ColumnDef<Row> = {
       id: "index",
       header: () => null,
-      cell: ({ row }) => (
-        <div className="flex items-center justify-start pl-4 py-2 text-muted-foreground text-xs">
-          {row.index + 1}
-        </div>
-      ),
+      cell: ({ row }) => <div className="flex items-center justify-start pl-4 py-2 text-muted-foreground text-xs">{row.index + 1}</div>,
       enableSorting: false,
       enableResizing: false,
     };
 
-    // Dynamic data columns
-    const dynamicColumns: ColumnDef<Row>[] = tableData.columns.map((col: Column) => ({
+    const dynamicColumns: ColumnDef<Row>[] = tableData.columns.map((col: Column, colIdx) => ({
       id: col.id,
       header: () => (
         <div className="flex items-center justify-between group px-2 overflow-hidden">
@@ -150,34 +247,41 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
             {col.type === "number" && <SquareSigma className="h-4 w-4 text-muted-foreground" />}
             {col.name}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 flex-shrink-0"
-            onClick={() => handleEditColumn(col)}
-            disabled={updateColumnMutation.isPending}
-          >
+          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 flex-shrink-0" onClick={() => handleEditColumn(col)} disabled={updateColumnMutation.isPending}>
             <Edit3 className="h-3 w-3" />
           </Button>
         </div>
       ),
-      accessorFn: (row: Row): { cellId: string; value: string | number | null; columnType: "text" | "number" } => {
-        const cell = row.cells.find((c) => c.column_id === col.id);
-        if (!cell) return { cellId: "", value: "", columnType: col.type };
-        return {
-          cellId: cell.id,
-          value: col.type === "text" ? cell.value_text : cell.value_number,
-          columnType: col.type
-        };
+      accessorFn: (row: Row) => {
+        const cell = row.cells.find(c => c.column_id === col.id);
+        return { cellId: cell?.id || "", value: col.type === "text" ? cell?.value_text : cell?.value_number, columnType: col.type };
       },
       cell: (cellContext) => {
-        const cellData = cellContext.getValue() as { cellId: string; value: string | number | null; columnType: "text" | "number" };
+        const { cellId, columnType } = cellContext.getValue() as any;
+        const row = cellContext.row;
+        const column = cellContext.column;
+        const dataColumnIndex = column.getIndex() - 1;
+        const isActive = activeCell?.rowIndex === row.index && activeCell?.columnIndex === dataColumnIndex;
+        const isEditing = editingCell?.rowIndex === row.index && editingCell?.columnIndex === dataColumnIndex;
+        // Directly get value from tableData
+        let value: string | number | null = null;
+        for (const r of tableData?.rows || []) {
+          for (const c of r.cells) {
+            if (c.id === cellId) {
+              value = columnType === "text" ? c.value_text : c.value_number;
+            }
+          }
+        }
         return (
-          <EditableCell
-            cellId={cellData.cellId}
-            value={cellData.value}
-            columnType={cellData.columnType}
-            tableId={tableId}
+          <Cell
+            value={value}
+            cellId={cellId}
+            columnType={columnType}
+            isActive={isActive}
+            isEditing={isEditing}
+            onActivate={() => setActiveCell({ cellId, rowIndex: row.index, columnIndex: dataColumnIndex })}
+            onEditStart={() => handleCellEditStart(cellId, row.index, dataColumnIndex)}
+            onEditEnd={(newValue) => handleCellEditEnd(cellId, columnType, newValue)}
           />
         );
       },
@@ -185,43 +289,24 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
       enableResizing: false,
     }));
 
-    // Actions column
     const actionsColumn: ColumnDef<Row> = {
       id: "actions",
       header: () => (
         <div className="flex justify-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => addColumnMutation.mutate({ tableId })}
-            disabled={addColumnMutation.isPending}
-            className="h-6 w-6 p-0"
-            title="Add Column"
-          >
+          <Button variant="ghost" size="sm" onClick={() => addColumnMutation.mutate({ tableId })} disabled={addColumnMutation.isPending} className="h-6 w-6 p-0" title="Add Column">
             <Plus className="h-3 w-3" />
           </Button>
         </div>
       ),
       cell: ({ row }) => (
-        <div className="flex justify-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => deleteRowMutation.mutate({ rowId: row.original.id })}
-            disabled={deleteRowMutation.isPending}
-            className="h-6 w-6 p-0 opacity-50 hover:opacity-100 hover:text-destructive"
-            title="Delete Row"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
+        <></>
       ),
       enableSorting: false,
       enableResizing: false,
     };
 
     return [indexColumn, ...dynamicColumns, actionsColumn];
-  }, [tableData?.columns, addColumnMutation, deleteRowMutation, updateColumnMutation.isPending, tableId, handleEditColumn]);
+  }, [tableData?.columns, addColumnMutation, deleteColumnMutation, updateColumnMutation.isPending, tableId, handleEditColumn, handleCellActivate, activeCell, editingCell]);
 
   const table = useReactTable({
     data: tableData?.rows ?? [],
@@ -258,11 +343,16 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
 
   return (
     <div className="w-fit max-w-full">
-      <div className="border border-border overflow-hidden">
+      <div className="border border-border border-t-0 overflow-hidden">
         {/* Table with horizontal scroll */}
         <div className="overflow-x-auto">
-          <table className="border-collapse">
-            <thead className="bg-muted/50">
+          <table
+            ref={tableRef}
+            className="border-collapse focus:outline-none"
+            tabIndex={-1}
+            onKeyDown={handleTableKeyDown}
+          >
+            <thead className="bg-muted">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
@@ -287,24 +377,21 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
               ))}
             </thead>
             <tbody>
-              {table.getRowModel().rows.map((row, index) => (
-                <tr 
-                  key={row.id} 
-                  className={`border-t border-border hover:bg-muted/30 ${
-                    index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
+              {table.getRowModel().rows.map((row, rowIdx) => (
+                <tr
+                  key={row.id}
+                  className={`border-t border-border hover:bg-muted/50 ${
+                    rowIdx % 2 === 0 ? 'bg-background' : 'bg-muted/10'
                   }`}
                 >
-                  {row.getVisibleCells().map((cell) => {
-                    const isIndexColumn = cell.column.id === "index";
-                    const isActionsColumn = cell.column.id === "actions";
+                  {row.getVisibleCells().map((cell, colIdx) => {
+
                     return (
-                      <td 
-                        key={cell.id} 
+                      <td
+                        key={cell.id}
                         className="p-0 overflow-hidden border-r border-border last:border-r-0"
                       >
-                        <div className="truncate">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </div>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     );
                   })}
@@ -320,10 +407,9 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
             onClick={() => addRowMutation.mutate({ tableId })}
             disabled={addRowMutation.isPending}
             variant="ghost"
-            className="w-full h-10 flex items-center justify-center gap-2"
+            className="w-full h-10 flex items-center justify-start gap-2 rounded-none"
           >
-            <Plus className="h-4 w-4" />
-            Add Row
+            <Plus className=" text-muted-foreground h-4 w-4" />
           </Button>
           <Button
             onClick={() => {

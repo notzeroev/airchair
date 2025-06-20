@@ -3,9 +3,11 @@
 import { useParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { api } from "@/trpc/react";
+import { useLayoutContext } from "@/context/LayoutProvider";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DynamicTable } from "@/components/dynamic-table";
+import { ActionBar } from "@/components/action-bar";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Dialog,
@@ -15,6 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ColorClasses, ColorIndex } from "@/lib/colors/colors";
 
 export default function BaseDetailPage() {
   const params = useParams();
@@ -28,7 +31,16 @@ export default function BaseDetailPage() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // Fetch tables for this base
+  const { setColorClass } = useLayoutContext();
+  const baseData = api.bases.getById.useQuery({ baseId });
+  const colorClass = ColorClasses[baseData.data?.color as ColorIndex];
+
+  useEffect(() => {
+    if (colorClass && setColorClass) {
+      setColorClass(colorClass);
+    }
+  }, [colorClass, setColorClass]);
+
   const { 
     data: tables, 
     isLoading, 
@@ -153,13 +165,21 @@ export default function BaseDetailPage() {
 
   return (
     <div className="w-full">
+        {/* Hidden color swatches to ensure Tailwind builds all color classes */}
+        <div className="hidden">
+            <div className="bg-red-500 bg-red-500/90"></div>
+            <div className="bg-blue-500 bg-blue-500/90"></div>
+            <div className="bg-green-500 bg-green-500/90"></div>
+            <div className="bg-yellow-500 bg-yellow-500/90"></div>
+            <div className="bg-purple-500 bg-purple-500/90"></div>
+        </div>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center bg-black relative">
                 {/* Left scroll button */}
                 {canScrollLeft && (
                   <button
                     onClick={scrollLeft}
-                    className="absolute left-0 z-10 h-full px-2 bg-primary to-transparent text-white transition-colors"
+                    className={`absolute left-0 z-10 h-full px-2 ${colorClass} to-transparent text-white transition-colors`}
                     aria-label="Scroll left"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -169,7 +189,7 @@ export default function BaseDetailPage() {
                 {/* Scrollable tabs container */}
                 <div 
                   ref={scrollContainerRef}
-                  className="overflow-x-auto scrollbar-hide flex-1 bg-primary/90"
+                  className={`overflow-x-auto scrollbar-hide flex-1 ${colorClass}/90`}
                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                 >
                   <div className="flex">
@@ -230,7 +250,7 @@ export default function BaseDetailPage() {
                 {canScrollRight && (
                   <button
                     onClick={scrollRight}
-                    className="absolute right-0 z-10 h-full px-2 bg-primary to-transparent text-white transition-colors"
+                    className={`absolute right-0 z-10 h-full px-2 ${colorClass} to-transparent text-white transition-colors`}
                     aria-label="Scroll right"
                   >
                     <ChevronRight className="h-4 w-4" />
@@ -240,7 +260,13 @@ export default function BaseDetailPage() {
 
         {tables.map((table) => (
           <TabsContent key={table.id} value={table.id} className="mt-0 border-0 p-0">
-            <DynamicTable tableId={table.id} tableName={table.name} />
+            <ActionBar></ActionBar>
+            <div>
+              <div className="w-42">
+
+              </div>
+              <DynamicTable tableId={table.id} tableName={table.name} />
+            </div>
           </TabsContent>
         ))}
       </Tabs>
