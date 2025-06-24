@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { DropdownLogoutButton } from '@/components/logout-button';
 import { useCurrentUserName } from '@/hooks/use-current-user-name';
@@ -15,14 +16,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useLayoutContext } from "@/context/LayoutProvider";
-import { ChevronDown, Download } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { Button } from './ui/button';
 
 export const Header = () => {
+  const pathname = usePathname();
   const { colorClass: contextColorClass } = useLayoutContext();
   const { baseName: contextBaseName } = useLayoutContext();
   const colorClass = contextColorClass ?? 'bg-primary';
   const baseName = contextBaseName;
+
+  // Only show base navigation on base detail pages (not on dashboard)
+  const isBaseDetailPage = pathname?.startsWith('/base/');
 
   return (
     <header className={`flex items-center justify-between px-6 py-4 ${colorClass}`}>
@@ -37,34 +42,38 @@ export const Header = () => {
             </svg>
           </div>
         </Link>
-        <div className='flex items-center gap-4'>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className='flex items-center gap-2 cursor-pointer'>
-                <h1 className='text-lg font-semibold text-white'>{baseName}</h1>
-                <ChevronDown className="w-4 h-4 text-white" />
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={15}>
-              <DropdownMenuItem disabled>Information about your base</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <div className='items-center gap-2 hidden sm:flex'>
-            <Button className='rounded-full bg-black/15' variant={"header"} size="sm">
-              Data
-            </Button>
-            <Button className="rounded-full" variant={"header"} size="sm">
-              Automations
-            </Button>
-            <Button className="rounded-full" variant={"header"} size="sm">
-              Interfaces
-            </Button>
-            <div className="bg-white/25 h-5 w-[1px] mx-2"></div>
-            <Button className="rounded-full" variant={"header"} size="sm">
-              Forms
-            </Button>
+
+        {/* Only render this div on base detail pages (not on dashboard) */}
+        {isBaseDetailPage && (
+          <div className='flex items-center gap-4'>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <div className='flex items-center gap-2 cursor-pointer'>
+                  <h1 className='text-lg font-semibold text-white'>{baseName}</h1>
+                  <ChevronDown className="w-4 h-4 text-white" />
+                </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={15}>
+                <DropdownMenuItem disabled>Information about your base</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className='items-center gap-2 hidden sm:flex'>
+              <Button className='rounded-full bg-black/15' variant={"header"} size="sm">
+                Data
+              </Button>
+              <Button className="rounded-full" variant={"header"} size="sm">
+                Automations
+              </Button>
+              <Button className="rounded-full" variant={"header"} size="sm">
+                Interfaces
+              </Button>
+              <div className="bg-white/25 h-5 w-[1px] mx-2"></div>
+              <Button className="rounded-full" variant={"header"} size="sm">
+                Forms
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <div className='flex items-center gap-4'>
         <DropdownMenu>
