@@ -124,11 +124,14 @@ export function BaseTable() {
             </div>
             <div className="flex justify-center space-x-2">
               <button
-                type="submit"
-                disabled={createBase.isPending || !baseName.trim()}
-                className="bg-primary text-white px-4 py-2 rounded hover:bg-primary disabled:opacity-50"
+              type="submit"
+              disabled={createBase.isPending || !baseName.trim()}
+              className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary disabled:opacity-50 flex items-center gap-2 min-w-30 justify-center"
               >
-                {createBase.isPending ? 'Creating...' : 'Create Base'}
+              {createBase.isPending ? (
+                <div className="h-5 w-5 border border-current border-t-transparent rounded-full animate-spin" />
+              ) : null}
+              {createBase.isPending ? '' : 'Create Base'}
               </button>
             </div>
           </form>

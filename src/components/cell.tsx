@@ -96,7 +96,7 @@ export function Cell({
     <div
       ref={cellRef}
       className={cn(
-        "px-3 py-2 min-h-10 w-42 flex items-center text-sm cursor-pointer transition-colors focus:outline-none box-border border-2 border-transparent",
+        "px-3 py-2 min-h-10 max-w-[calc(10.5rem-1px)] flex items-center text-sm cursor-pointer transition-colors focus:outline-none border-2 border-transparent",
         isActive && "border-2 border-blue-600 text-blue-600",  
         isEditing && "text-bg-foreground"
       )}

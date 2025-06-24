@@ -18,12 +18,15 @@ const geist = Geist({
   variable: "--font-geist-sans",
 });
 
+
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${geist.variable}`}>
-      <body>
+      <body className="overflow-y-hidden h-screen scrollbar-hide"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         <TRPCReactProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             {children}
