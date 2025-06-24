@@ -18,6 +18,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Cell } from "./cell";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import LoadingIcon from "./loading";
 
 interface DynamicTableProps {
   tableId: string;
@@ -49,6 +51,13 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
   const [columnName, setColumnName] = useState("");
   const [columnType, setColumnType] = useState<"text" | "number">("text");
   
+  // Batch add state
+  const [batchProgress, setBatchProgress] = useState<{
+    isRunning: boolean;
+    current: number;
+    total: number;
+  }>({ isRunning: false, current: 0, total: 0 });
+
   // Simplified cell state management
   const [activeCell, setActiveCell] = useState<{
     cellId: string;
@@ -74,7 +83,11 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
     onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
   });
 
-  const add100RowsMutation = api.tables.add100Rows.useMutation({
+  const addRowsMutation = api.tables.addRows.useMutation({
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
+  });
+
+  const addManyRowsMutation = api.tables.addRows.useMutation({
     onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
   });
 
@@ -96,9 +109,36 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
 
   // --- Cell update mutation with optimistic update ---
   const updateCellMutation = api.tables.updateCell.useMutation({
-    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
-    onSettled: () => void utils.tables.getTableData.invalidate({ tableId }),
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId })
   });
+
+  const handleBatchAddRows = async () => {
+    const totalBatches =  10;
+    const rowsPerBatch = 1000;
+    
+    setBatchProgress({ isRunning: true, current: 0, total: totalBatches });
+    
+    try {
+      for (let i = 0; i < totalBatches; i++) {
+        setBatchProgress({ isRunning: true, current: i + 1, total: totalBatches });
+        
+        await addManyRowsMutation.mutateAsync({ 
+          tableId, 
+          count: rowsPerBatch 
+        });
+        
+        // Small delay to prevent overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Refresh table data after completion
+      void utils.tables.getTableData.invalidate({ tableId });
+    } catch (error) {
+      console.error('Batch add failed:', error);
+    } finally {
+      setBatchProgress({ isRunning: false, current: 0, total: 0 });
+    }
+  };
 
   // --- Cell editing handlers ---
   const handleCellEditStart = (cellId: string, rowIndex: number, columnIndex: number) => {
@@ -241,13 +281,13 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
     const dynamicColumns: ColumnDef<Row>[] = tableData.columns.map((col: Column, colIdx) => ({
       id: col.id,
       header: () => (
-        <div className="flex items-center justify-between group px-2 overflow-hidden">
+        <div className="flex items-center justify-between group p-2 overflow-hidden">
           <span className="flex items-center gap-2 font-semibold text-sm truncate flex-1 min-w-0">
             {col.type === "text" && <Text className="h-4 w-4 text-muted-foreground" />}
             {col.type === "number" && <SquareSigma className="h-4 w-4 text-muted-foreground" />}
             {col.name}
           </span>
-          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 flex-shrink-0" onClick={() => handleEditColumn(col)} disabled={updateColumnMutation.isPending}>
+          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 box-border border-2 border-transparent" onClick={() => handleEditColumn(col)} disabled={updateColumnMutation.isPending}>
             <Edit3 className="h-3 w-3" />
           </Button>
         </div>
@@ -292,7 +332,7 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
     const actionsColumn: ColumnDef<Row> = {
       id: "actions",
       header: () => (
-        <div className="flex justify-center">
+        <div className="flex justify-center hover:scale-120 transition-transform">
           <Button variant="ghost" size="sm" onClick={() => addColumnMutation.mutate({ tableId })} disabled={addColumnMutation.isPending} className="h-6 w-6 p-0" title="Add Column">
             <Plus className="h-3 w-3" />
           </Button>
@@ -314,16 +354,24 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
     getCoreRowModel: getCoreRowModel(),
   });
 
+    //virtualization setup
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: table.getRowModel().rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 41, // Adjust based on average row height
+    overscan: 10,
+  });
+  
+
   if (isLoading) {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center min-h-[200px]">
-          <div className="text-center">
-            <div className="relative w-8 h-8 mx-auto mb-4">
-              <div className="absolute inset-0 rounded-full border-2 border-muted"></div>
-              <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
-            </div>
-            <p className="text-muted-foreground text-sm">Loading table data...</p>
+          <div className="text-center flex flex-col items-center gap-4">
+              <LoadingIcon />
+              <p className="text-muted-foreground text-sm">Loading table data...</p>
           </div>
         </div>
       </div>
@@ -342,66 +390,97 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
   }
 
   return (
-    <div className="w-fit max-w-full">
-      <div className="border border-border border-t-0 overflow-hidden">
-        {/* Table with horizontal scroll */}
-        <div className="overflow-x-auto">
-          <table
-            ref={tableRef}
-            className="border-collapse focus:outline-none"
-            tabIndex={-1}
-            onKeyDown={handleTableKeyDown}
-          >
-            <thead className="bg-muted">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => {
-                    const isIndexColumn = header.column.id === "index";
-                    const isActionsColumn = header.column.id === "actions";
-                    return (
-                      <th
-                        key={header.id}
-                        className={`text-left font-medium text-sm ${
-                          isIndexColumn || isActionsColumn
-                            ? "w-16 min-w-16 max-w-16 p-0" 
-                            : "w-42 min-w-42 max-w-42 border-r border-border last:border-r-0 py-2"
-                        }`}
-                      >
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                      </th>
-                    );
-                  })}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.map((row, rowIdx) => (
-                <tr
-                  key={row.id}
-                  className={`border-t border-border hover:bg-muted/50 ${
-                    rowIdx % 2 === 0 ? 'bg-background' : 'bg-muted/10'
-                  }`}
-                >
-                  {row.getVisibleCells().map((cell, colIdx) => {
+    <div className="w-fit w-full h-full">
+      
+      {/* virt stuff */}
+      <div className="border border-border border-t-0 overflow-hidden h-full">
+        {/* Table with scroll */}
+        <div ref={parentRef} className="overflow-auto"
+          style={{ height: "calc(100vh - 200px)" }}>
+          <div className="overflow-x-auto overflow-y-hidden w-full border-b">
+            <table
+              ref={tableRef}
+              className="focus:outline-none"
+              tabIndex={-1}
+              onKeyDown={handleTableKeyDown}
+            >
+              <thead className="bg-muted sticky top-0 z-10 border-r border-border">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => {
+                      const isIndexColumn = header.column.id === "index";
+                      const isActionsColumn = header.column.id === "actions";
+                      return (
+                        <th
+                          key={header.id}
+                          className={`text-left font-medium text-sm border-r last:border-r-0 border-border ${
+                            isIndexColumn || isActionsColumn
+                              ? "w-16 min-w-16 max-w-16" 
+                              : "w-42 min-w-42 max-w-42"
+                          }`}
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </thead>
 
-                    return (
-                      <td
-                        key={cell.id}
-                        className="p-0 overflow-hidden border-r border-border last:border-r-0"
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              <tbody
+                className="border-t-2 border-border"
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            position: "relative",
+          }}
+              >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const row = table.getRowModel().rows[virtualRow.index];
+            if (!row) return null;
+            return (
+              <tr
+                key={row.id}
+                data-index={virtualRow.index}
+                ref={el => rowVirtualizer.measureElement(el)}
+                className={`border-b border-border last:border-transparent hover:bg-muted/50 ${
+            virtualRow.index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
+                }`}
+                style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                {row.getVisibleCells().map((cell) => {
+            const isIndexColumn = cell.column.id === "index";
+            const isActionsColumn = cell.column.id === "actions";
+            if(!isActionsColumn) {
+              return (
+                <td
+                  key={cell.id}
+                  className={`p-0 border-r-1 ${
+              isIndexColumn || isActionsColumn
+                ? "w-16"
+                : "w-42"
+                  }`
+                }
+                >
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              );
+            }
+                })}
+              </tr>
+            );
+          })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        
-        {/* Add row button - outside table but inside container */}
+
         <div className="relative border-t border-border">
           <Button
             onClick={() => addRowMutation.mutate({ tableId })}
@@ -411,20 +490,42 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
           >
             <Plus className=" text-muted-foreground h-4 w-4" />
           </Button>
-          <Button
-            onClick={() => {
-                add100RowsMutation.mutate({ tableId });
-            }}
-            variant="outline"
-            disabled={addRowMutation.isPending}
-            size="sm"
-            className="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-3 flex items-center gap-1"
-          >
-            <Plus className="h-3 w-3" />
-            100
-          </Button>
+          <div className="absolute left-16 top-1/2 -translate-y-1/2 flex gap-2">
+            <Button
+              onClick={() => addRowsMutation.mutate({ tableId, count: 100 })}
+              variant="outline"
+              disabled={addRowsMutation.isPending || batchProgress.isRunning}
+              size="sm"
+              className="h-8 px-3 flex items-center gap-1"
+            >
+              {addRowsMutation.isPending ? (
+                <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Plus className="h-3 w-3" />
+              )}
+              100 Rows
+            </Button>
+            <Button
+              onClick={handleBatchAddRows}
+              variant="outline"
+              disabled={batchProgress.isRunning}
+              size="sm"
+              className="h-8 px-3 flex items-center gap-1"
+            >
+              {batchProgress.isRunning ? (
+                <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Plus className="h-3 w-3" />
+              )}
+              {batchProgress.isRunning 
+                ? `${batchProgress.current}/${batchProgress.total}K Rows` 
+                : "10K Rows"
+              }
+            </Button>
+          </div>
         </div>
       </div>
+
 
       {/* Edit Column Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>

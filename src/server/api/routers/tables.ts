@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { number, z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { faker } from "@faker-js/faker";
 import { type SupabaseClient } from '@supabase/supabase-js';
@@ -847,9 +847,10 @@ export const tablesRouter = createTRPCRouter({
   /**
    * Add 100 rows to a table with appropriate data
    */
-  add100Rows: protectedProcedure
+  addRows: protectedProcedure
     .input(z.object({
       tableId: z.string().uuid("Invalid table ID format"),
+      count: z.number()
     }))
     .mutation(async ({ input, ctx }) => {
       const supabase = ctx.getSupabaseClient();
@@ -880,7 +881,7 @@ export const tablesRouter = createTRPCRouter({
         }
 
         // Create 100 rows
-        const rowsToInsert = Array(100).fill(null).map(() => ({ table_id: input.tableId }));
+        const rowsToInsert = Array(input.count).fill(null).map(() => ({ table_id: input.tableId }));
         
         const { data: newRows, error: rowsError } = await supabase
           .from('rows')
@@ -946,7 +947,7 @@ export const tablesRouter = createTRPCRouter({
         
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "An unexpected error occurred while adding 100 rows",
+          message: `An unexpected error occurred while adding ${input.count} rows`,
           cause: error,
         });
       }
