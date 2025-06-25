@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { CurrentUserAvatar } from '@/components/current-user-avatar';
 import { DropdownLogoutButton } from '@/components/logout-button';
 import { useCurrentUserName } from '@/hooks/use-current-user-name';
@@ -20,14 +19,13 @@ import { ChevronDown } from 'lucide-react';
 import { Button } from './ui/button';
 
 export const Header = () => {
-  const pathname = usePathname();
   const { colorClass: contextColorClass } = useLayoutContext();
   const { baseName: contextBaseName } = useLayoutContext();
   const colorClass = contextColorClass ?? 'bg-primary';
   const baseName = contextBaseName;
 
   // Only show base navigation on base detail pages (not on dashboard)
-  const isBaseDetailPage = pathname?.startsWith('/base/');
+  const isBaseDetailPage = baseName != null;
 
   return (
     <header className={`flex items-center justify-between px-6 py-4 ${colorClass}`}>
