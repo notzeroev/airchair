@@ -1,6 +1,6 @@
 'use client'
 
-import { AlignJustify, ArrowDownUp, ExternalLink, EyeOff, Filter, FilterIcon, Grid, Group, ListFilter, MoveVertical, PaintBucket, Search, Sparkle, Table, Table2, TableCellsSplit } from "lucide-react";
+import { AlignJustify, ArrowDownUp, ExternalLink, EyeOff, List, ListFilter, MoveVertical, PaintBucket, Search, Sparkle, TableCellsSplit } from "lucide-react";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -9,7 +9,15 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-export const ActionBar = () => {
+import type { Field, Filter } from "@/types/filters";
+import { FilterBuilder } from "./filter";
+
+type ActionBarProps = {
+  tableId: string;
+  viewId: string;
+};
+
+export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
   return (
     <div className="flex items-start justify-between py-2 px-4 border-b bg-background">
       <div className="flex flex-wrap align-center gap-2">
@@ -27,17 +35,10 @@ export const ActionBar = () => {
 
         <div className="h-5 w-[1px] bg-border my-auto"></div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="cursor-pointer">
-                <TableCellsSplit className="w-4 h-4 text-blue-500" />
-                <span className="">Grid view</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button variant="ghost">
+            <TableCellsSplit className="w-4 h-4 text-blue-500" />
+            <span className="">Grid view</span>
+        </Button>
 
         <div className="h-5 w-[1px] my-auto"></div>
 
@@ -58,7 +59,10 @@ export const ActionBar = () => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
+            <DropdownMenuItem>
+              {/* <FilterBuilder filters={filters} setFilters={setFilters} fields={fields} /> */}
+              <List className="w-4 h-4" />
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>

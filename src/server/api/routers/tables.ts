@@ -205,6 +205,28 @@ export const tablesRouter = createTRPCRouter({
             await createSampleRowsWithData(supabase, newTableData.id, insertedColumns, 2);
           }
 
+          // Create default view for the new table
+          const { data: viewData, error: viewError } = await supabase
+            .from('views')
+            .insert({
+              table_id: newTableData.id,
+              user_id: ctx.user.id,
+              name: "Default View",
+              type: "grid",
+              hidden_column_ids: [],
+            })
+            .select('id')
+            .single();
+
+          if (viewError || !viewData) {
+            await supabase.from('tables').delete().eq('id', newTableData.id);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to create default view: ${(viewError as Error).message}`,
+              cause: viewError,
+            });
+          }
+
           tables = [{
             id: newTableData.id as string,
             name: newTableData.name as string,
@@ -236,13 +258,13 @@ export const tablesRouter = createTRPCRouter({
     }))
     .mutation(async ({ input, ctx }) => {
       const supabase = ctx.getSupabaseClient();
-      
+
       try {
         // Verify base access
         await verifyBaseAccess(supabase, input.baseId, ctx.user.id);
 
         // Create the new table
-        const { data, error } = await supabase
+        const { data: tableData, error: tableError } = await supabase
           .from('tables')
           .insert({
             base_id: input.baseId,
@@ -251,22 +273,22 @@ export const tablesRouter = createTRPCRouter({
           .select('id, name')
           .single();
 
-        if (error) {
+        if (tableError || !tableData) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to create table: ${(error as Error).message}`,
-            cause: error,
+            message: `Failed to create table: ${(tableError as Error).message}`,
+            cause: tableError,
           });
         }
 
         // Create default columns for the new table
         const { data: insertedColumns, error: columnsError } = await supabase
           .from('columns')
-          .insert(createDefaultColumns(data.id))
+          .insert(createDefaultColumns(tableData.id))
           .select('id, type');
-        
+
         if (columnsError) {
-          await supabase.from('tables').delete().eq('id', data.id);
+          await supabase.from('tables').delete().eq('id', tableData.id);
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: `Failed to create default columns: ${(columnsError as Error).message}`,
@@ -274,20 +296,43 @@ export const tablesRouter = createTRPCRouter({
           });
         }
 
-        // Create sample row with fake data (1 row for new tables)
+        // Create sample row with fake data
         if (insertedColumns) {
-          await createSampleRowsWithData(supabase, data.id, insertedColumns, 1);
+          await createSampleRowsWithData(supabase, tableData.id, insertedColumns, 1);
+        }
+
+        // Create default view
+        const { data: viewData, error: viewError } = await supabase
+          .from('views')
+          .insert({
+            table_id: tableData.id,
+            user_id: ctx.user.id,
+            name: "Default View",
+            type: "grid",
+            hidden_column_ids: [],
+          })
+          .select('id')
+          .single();
+
+        if (viewError || !viewData) {
+          await supabase.from('tables').delete().eq('id', tableData.id);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create default view: ${(viewError as Error).message}`,
+            cause: viewError,
+          });
         }
 
         return {
-          id: data.id as string,
-          name: data.name as string,
+          id: tableData.id,
+          name: tableData.name,
+          defaultViewId: viewData.id,
         };
       } catch (error) {
         if (error instanceof TRPCError) {
           throw error;
         }
-        
+
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "An unexpected error occurred while creating the table",
@@ -295,6 +340,50 @@ export const tablesRouter = createTRPCRouter({
         });
       }
     }),
+
+  resolveDefaultTableView: protectedProcedure
+    .input(z.object({
+      baseId: z.string().uuid()
+    }))
+    .query(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+
+      // Validate base access
+      await verifyBaseAccess(supabase, input.baseId, ctx.user.id);
+
+      // Resolve the first table in the base
+      const { data: firstTable, error: tableError } = await supabase
+        .from('tables')
+        .select('id')
+        .eq('base_id', input.baseId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (tableError || !firstTable?.id) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'No table found in base' });
+      }
+
+      const tableId = firstTable.id;
+
+      // Resolve the default view for the table
+      const { data: defaultView, error: viewError } = await supabase
+        .from('views')
+        .select('id')
+        .eq('table_id', tableId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (viewError || !defaultView?.id) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'No view found for table' });
+      }
+
+      const viewId = defaultView.id;
+
+      return { tableId, viewId };
+    }),
+
 
   /**
    * Get table data including columns and rows with cells
