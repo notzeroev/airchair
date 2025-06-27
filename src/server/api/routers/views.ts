@@ -3,6 +3,118 @@ import { protectedProcedure, createTRPCRouter } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 
 export const viewsRouter = createTRPCRouter({
+
+  createView: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        name: z.string().min(1).max(255),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+      try {
+        const { data: viewData, error: viewError } = await supabase
+          .from("views")
+          .insert({
+            table_id: input.tableId,
+            name: input.name,
+          })
+          .select("id, name")
+          .single();
+
+        if (viewError || !viewData) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create view: ${(viewError as Error).message}`,
+            cause: viewError,
+          });
+        }
+
+        return { viewId: viewData.id, name: viewData.name };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while creating the view",
+          cause: error,
+        });
+      }
+    }),
+
+  updateView: protectedProcedure
+    .input(
+      z.object({
+        viewId: z.string().uuid(),
+        name: z.string().min(1).max(255),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+      try {
+        const { data: updatedView, error: updateError } = await supabase
+          .from('views')
+          .update({ name: input.name })
+          .eq('id', input.viewId)
+          .select('id, name')
+          .single();
+        if (updateError || !updatedView) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to update view: ${(updateError as Error).message}`,
+            cause: updateError,
+          });
+        }
+        return { viewId: updatedView.id, name: updatedView.name };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while updating the view",
+          cause: error,
+        });
+      }
+    }),
+
+  deleteView: protectedProcedure
+    .input(z.object({
+      viewId: z.string().uuid()
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+      try {
+        const { error: deleteError } = await supabase
+          .from('views')
+          .delete()
+          .eq('id', input.viewId);
+
+        if (deleteError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to delete view: ${(deleteError as Error).message}`,
+            cause: deleteError,
+          });
+        }
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while deleting the view",
+          cause: error,
+        });
+      }
+    }),
+
   resolveDefaultView: protectedProcedure
     .input(z.object({
       tableId: z.string().uuid()
