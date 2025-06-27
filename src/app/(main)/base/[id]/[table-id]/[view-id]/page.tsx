@@ -249,11 +249,12 @@ export default function BaseDetailPage() {
         {tables.map((table) => (
           <TabsContent key={table.id} value={table.id} className="mt-0 border-0 p-0 h-full">
             <ActionBar
-              viewId={viewId}
               tableId={table.id}
+              viewId={viewId}
             />
             <DynamicTable
               tableId={table.id}
+              viewId={viewId}
               tableName={table.name}
             />
           </TabsContent>

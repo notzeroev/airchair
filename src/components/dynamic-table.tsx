@@ -23,6 +23,7 @@ import LoadingIcon from "./loading";
 
 interface DynamicTableProps {
   tableId: string;
+  viewId: string;
   tableName?: string;
 }
 
@@ -45,7 +46,7 @@ interface Row {
   cells: Cell[];
 }
 
-export function DynamicTable({ tableId }: DynamicTableProps) {
+export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<Column | null>(null);
   const [columnName, setColumnName] = useState("");
@@ -73,30 +74,30 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
   } | null>(null);
 
   const { data: tableData, isLoading, error } = api.tables.getTableData.useQuery(
-    { tableId },
+    { tableId, viewId },
     { enabled: !!tableId }
   );
 
   const utils = api.useUtils();
 
   const addRowMutation = api.tables.addRow.useMutation({
-    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId, viewId }),
   });
 
   const addRowsMutation = api.tables.addRows.useMutation({
-    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId, viewId }),
   });
 
   const addManyRowsMutation = api.tables.addRows.useMutation({
-    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId, viewId }),
   });
 
   const addColumnMutation = api.tables.addColumn.useMutation({
-    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId, viewId }),
   });
 
   const deleteColumnMutation = api.tables.deleteColumn.useMutation({
-    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId }),
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId, viewId }),
   });
 
   const updateColumnMutation = api.tables.updateColumn.useMutation({
@@ -109,7 +110,7 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
 
   // --- Cell update mutation with optimistic update ---
   const updateCellMutation = api.tables.updateCell.useMutation({
-    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId })
+    onSuccess: () => void utils.tables.getTableData.invalidate({ tableId, viewId })
   });
 
   const handleBatchAddRows = async () => {
@@ -132,7 +133,7 @@ export function DynamicTable({ tableId }: DynamicTableProps) {
       }
       
       // Refresh table data after completion
-      void utils.tables.getTableData.invalidate({ tableId });
+      void utils.tables.getTableData.invalidate({ tableId, viewId });
     } catch (error) {
       console.error('Batch add failed:', error);
     } finally {

@@ -4,6 +4,7 @@ import { faker } from "@faker-js/faker";
 import { type SupabaseClient } from '@supabase/supabase-js';
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { applySupabaseFilters } from "@/lib/filter-utils";
 
 // Helper function to create default columns
 const createDefaultColumns = (tableId: string) => [
@@ -391,6 +392,7 @@ export const tablesRouter = createTRPCRouter({
   getTableData: protectedProcedure
     .input(z.object({
       tableId: z.string().uuid("Invalid table ID format"),
+      viewId: z.string().uuid("Invalid table ID format")
     }))
     .query(async ({ input, ctx }) => {
       const supabase = ctx.getSupabaseClient();
@@ -415,6 +417,20 @@ export const tablesRouter = createTRPCRouter({
           });
         }
 
+        // Get the filters.
+        const { data: filters, error: filtersError } = await supabase
+          .from('filters')
+          .select('column_id, operator, value_text, value_number')
+          .eq('view_id', input.viewId);
+
+        if (filtersError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch filters: ${(filtersError as Error).message}`,
+          });
+        }
+
+
         // Get columns
         const { data: columns, error: columnsError } = await supabase
           .from('columns')
@@ -430,7 +446,7 @@ export const tablesRouter = createTRPCRouter({
         }
 
         // Get rows with cells
-        const { data: rows, error: rowsError } = await supabase
+        let rowsQuery = supabase
           .from('rows')
           .select(`
             id,
@@ -443,6 +459,22 @@ export const tablesRouter = createTRPCRouter({
           `)
           .eq('table_id', input.tableId)
           .order('created_at', { ascending: true });
+
+        // Apply the filter mapping we just made
+        if (filters && filters.length > 0) {
+          rowsQuery = applySupabaseFilters(rowsQuery, filters.map(filter => {
+            const column = columns.find(col => col.id === filter.column_id);
+            return {
+              column_id: filter.column_id,
+              operator: filter.operator,
+              value_text: filter.value_text,
+              value_number: filter.value_number,
+              column_type: column?.type === 'number' ? 'number' : 'text',
+            };
+          }));
+        }
+
+        const { data: rows, error: rowsError } = await rowsQuery;
 
         if (rowsError) {
           throw new TRPCError({
@@ -1030,13 +1062,10 @@ export const tablesRouter = createTRPCRouter({
           rowsCreated: newRows.length
         };
       } catch (error) {
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-        
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `An unexpected error occurred while adding ${input.count} rows`,
+          message: "An unexpected error occurred while adding a row filter",
           cause: error,
         });
       }
