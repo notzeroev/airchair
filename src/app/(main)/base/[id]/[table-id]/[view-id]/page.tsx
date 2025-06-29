@@ -8,6 +8,7 @@ import { useLayoutContext } from "@/context/LayoutProvider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DynamicTable } from "@/components/dynamic-table";
 import { ActionBar } from "@/components/action-bar";
+import { ViewSidebar } from "@/components/view-sidebar";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Dialog,
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { ColorClasses, ColorIndex } from "@/lib/colors/colors";
 import LoadingIcon from "@/components/loading";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
 export default function BaseDetailPage() {
   const params = useParams<{ id: string; 'table-id': string; 'view-id': string }>();
@@ -248,15 +250,28 @@ export default function BaseDetailPage() {
 
         {tables.map((table) => (
           <TabsContent key={table.id} value={table.id} className="mt-0 border-0 p-0 h-full">
-            <ActionBar
-              tableId={table.id}
-              viewId={viewId}
-            />
-            <DynamicTable
-              tableId={table.id}
-              viewId={viewId}
-              tableName={table.name}
-            />
+            <SidebarProvider className="w-full">
+              <div className="w-full">
+                <ActionBar
+                  tableId={table.id}
+                  viewId={viewId}
+                />
+                <div className="flex relative h-full">
+                    {table.id === tableId && (
+                      <ViewSidebar
+                        baseId={baseId}
+                        viewId={viewId}
+                        tableId={table.id}
+                      />
+                    )}
+                    <DynamicTable
+                      tableId={table.id}
+                      viewId={viewId}
+                      tableName={table.name}
+                    />
+                </div>
+              </div>
+            </SidebarProvider>
           </TabsContent>
         ))}
       </Tabs>

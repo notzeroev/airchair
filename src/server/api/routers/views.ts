@@ -3,12 +3,12 @@ import { protectedProcedure, createTRPCRouter } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 
 export const viewsRouter = createTRPCRouter({
-
   createView: protectedProcedure
     .input(
       z.object({
         tableId: z.string().uuid(),
         name: z.string().min(1).max(255),
+        type: z.string().min(1).max(255)
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -18,9 +18,12 @@ export const viewsRouter = createTRPCRouter({
           .from("views")
           .insert({
             table_id: input.tableId,
+            user_id: ctx.user.id,
             name: input.name,
+            type: input.type,
+            hidden_column_ids: [],
           })
-          .select("id, name")
+          .select("id, name, type")
           .single();
 
         if (viewError || !viewData) {
@@ -31,7 +34,7 @@ export const viewsRouter = createTRPCRouter({
           });
         }
 
-        return { viewId: viewData.id, name: viewData.name };
+        return { viewId: viewData.id, name: viewData.name, type: viewData.type };
       } catch (error) {
         if (error instanceof TRPCError) {
           throw error;
@@ -139,7 +142,6 @@ export const viewsRouter = createTRPCRouter({
 
       return { viewId };
     }),
-
     getColumns: protectedProcedure
     .input(z.object({
       tableId: z.string().uuid()
@@ -161,5 +163,44 @@ export const viewsRouter = createTRPCRouter({
       }
 
       return { columns: columns || [], };
+    }),
+
+  getViews: protectedProcedure
+    .input(z.object({
+      tableId: z.string().uuid()
+    }))
+    .query(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+      try {
+        const { data: views, error: viewsError } = await supabase
+          .from("views")
+          .select("id, name, type")
+          .eq("table_id", input.tableId)
+          .order("created_at", { ascending: true });
+
+        if (viewsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch views: ${(viewsError as Error).message}`,
+            cause: viewsError,
+          });
+        }
+
+        return (views).map(view => ({
+          id: view.id as string,
+          name: view.name as string,
+          type: view.type as string
+        }));
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while fetching views",
+          cause: error,
+        });
+      }
     }),
 });
