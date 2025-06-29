@@ -351,7 +351,7 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
 
   const table = useReactTable({
     data: tableData?.rows ?? [],
-    columns,
+    columns: columns as ColumnDef<{ id: any; created_at: any; cells: { id: any; column_id: any; value_text: any; value_number: any; }[]; }>[],
     getCoreRowModel: getCoreRowModel(),
   });
 

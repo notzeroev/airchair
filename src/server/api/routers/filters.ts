@@ -9,8 +9,8 @@ export const filtersRouter = createTRPCRouter({
         viewId: z.string().uuid(),
         columnId: z.string().uuid(),
         operator: z.string(),
-        value_text: z.string().optional(),
-        value_number: z.number().optional(),
+        value_text: z.string().nullable().optional().default(null),
+        value_number: z.number().nullable().optional().default(null),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -25,7 +25,7 @@ export const filtersRouter = createTRPCRouter({
             value_text: input.value_text,
             value_number: input.value_number,
           })
-          .select("id, name")
+          .select("id")
           .single();
 
           if (filterError || !filterData) {
@@ -117,4 +117,44 @@ export const filtersRouter = createTRPCRouter({
         });
       }
     }),
+    
+    getFilters: protectedProcedure
+        .input(z.object({
+          viewId: z.string().uuid("Invalid view ID format")
+        }))
+        .query(async ({ input, ctx }) => {
+          const supabase = ctx.getSupabaseClient();
+    
+          try {
+            const { data: filters, error: filtersError } = await supabase
+              .from('filters')
+              .select('id, column_id, operator, value_text, value_number')
+              .eq('view_id', input.viewId);
+
+            if (filtersError) {
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Failed to fetch filters: ${(filtersError as Error).message}`,
+              });
+            }
+
+            return (filters).map(filter => ({
+              id: filter.id as string,
+              columnId: filter.column_id as string,
+              operator: filter.operator as string,
+              value_text: filter.value_text || null as string | null,
+              value_number: filter.value_number || null as number | null,
+            }));
+          } catch (error) {
+            if (error instanceof TRPCError) {
+              throw error;
+            }
+            
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "An unexpected error occurred while fetching table data",
+              cause: error,
+            });
+          }
+        }),
 });

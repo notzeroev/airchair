@@ -115,7 +115,6 @@
   --sidebar-ring: oklch(0.637 0.237 25.331);
 }
 
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -131,7 +130,7 @@
         background-position-x: 0%
     }
   }
-  
+
   .shimmer {
     opacity: 0.5;
     background: linear-gradient(-45deg, rgba(0, 0, 0, 0.02) 40%, rgba(0, 0, 0, 0.05) 50%, rgba(0, 0, 0, 0.02) 60%);
@@ -139,7 +138,7 @@
     background-position-x: 100%;
     animation: shimmer 1s infinite linear;
   }
-  
+
   .dark .shimmer {
     background: linear-gradient(-45deg, rgba(255, 255, 255, 0.01) 40%, rgba(255, 255, 255, 0.03) 50%, rgba(255, 255, 255, 0.01) 60%);
     background-size: 300%;

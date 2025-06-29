@@ -8,9 +8,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-
-import type { Field, Filter } from "@/types/filters";
-import { FilterBuilder } from "./filter";
+import { FilterBuilder } from "./filter-builder";
+import { useSidebar } from "./ui/sidebar";
 
 type ActionBarProps = {
   tableId: string;
@@ -18,20 +17,16 @@ type ActionBarProps = {
 };
 
 export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
+  const { toggleSidebar } = useSidebar();
+
   return (
     <div className="flex items-start justify-between py-2 px-4 border-b bg-background">
       <div className="flex flex-wrap align-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="cursor-pointer">
-                <AlignJustify className="w-4 h-4" />
-                <span className="">Views</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        
+        <Button variant="ghost" className="cursor-pointer" onClick={toggleSidebar}>
+            <AlignJustify className="w-4 h-4" />
+            <span className="">Views</span>
+        </Button>
 
         <div className="h-5 w-[1px] bg-border my-auto"></div>
 
@@ -48,7 +43,7 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <EyeOff className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="start">
             <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -58,11 +53,8 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <ListFilter className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem>
-              {/* <FilterBuilder filters={filters} setFilters={setFilters} fields={fields} /> */}
-              <List className="w-4 h-4" />
-            </DropdownMenuItem>
+          <DropdownMenuContent align="start" className="w-140 p-4">
+            <FilterBuilder viewId={viewId} tableId={tableId} />
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>
@@ -71,7 +63,7 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <ArrowDownUp className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="start">
             <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -81,7 +73,7 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <PaintBucket className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="start">
             <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -91,7 +83,7 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <MoveVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="start">
             <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -101,7 +93,7 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <ExternalLink className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="start">
             <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -112,7 +104,7 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <span className="">Create AI Fields</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="start">
             <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

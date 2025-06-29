@@ -390,96 +390,164 @@ export const tablesRouter = createTRPCRouter({
    * Get table data including columns and rows with cells
    */
   getTableData: protectedProcedure
-    .input(z.object({
-      tableId: z.string().uuid("Invalid table ID format"),
-      viewId: z.string().uuid("Invalid table ID format")
-    }))
-    .query(async ({ input, ctx }) => {
-      const supabase = ctx.getSupabaseClient();
+  .input(z.object({
+    tableId: z.string().uuid("Invalid table ID format"),
+    viewId: z.string().uuid("Invalid view ID format")
+  }))
+  .query(async ({ input, ctx }) => {
+    const supabase = ctx.getSupabaseClient();
 
-      try {
-        // First verify the table belongs to a base owned by the user
-        const { data: tableData, error: tableError } = await supabase
-          .from('tables')
-          .select(`
-            id,
-            name,
-            bases!inner(user_id)
-          `)
-          .eq('id', input.tableId)
-          .eq('bases.user_id', ctx.user.id)
-          .single();
+    try {
+      // Step 1: Authorize user access
+      const { data: tableData, error: tableError } = await supabase
+        .from('tables')
+        .select(`id, name, bases!inner(user_id)`)
+        .eq('id', input.tableId)
+        .eq('bases.user_id', ctx.user.id)
+        .single();
 
-        if (tableError || !tableData) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Table not found or you don't have access to it",
-          });
-        }
+      if (tableError || !tableData) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Table not found or access denied",
+        });
+      }
 
-        // Get the filters.
-        const { data: filters, error: filtersError } = await supabase
-          .from('filters')
-          .select('column_id, operator, value_text, value_number')
-          .eq('view_id', input.viewId);
+      // Step 2: Get filters
+      const { data: filters, error: filtersError } = await supabase
+        .from('filters')
+        .select('column_id, operator, value_text, value_number')
+        .eq('view_id', input.viewId);
 
-        if (filtersError) {
+      if (filtersError) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to fetch filters: ${filtersError.message}`,
+        });
+      }
+
+      // Step 3: Get columns
+      const { data: columns, error: columnsError } = await supabase
+        .from('columns')
+        .select('id, name, type, position')
+        .eq('table_id', input.tableId)
+        .order('position', { ascending: true });
+
+      if (columnsError) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to fetch columns: ${columnsError.message}`,
+        });
+      }
+
+      // Step 4: Get rows with all their cells
+      if (filters.length > 0) {
+        // First, get the row IDs that match ALL filters
+        const matchingRowIdsQuery = supabase
+          .from('rows')
+          .select('id')
+          .eq('table_id', input.tableId);
+
+        // Apply each filter to find matching row IDs
+        let filteredRowIds: string[] = [];
+        
+        // Get all cells for this table to apply filters
+        const { data: allCells, error: cellsError } = await supabase
+          .from('cells')
+          .select('row_id, column_id, value_text, value_number')
+          .in('column_id', filters.map(f => f.column_id));
+
+        if (cellsError) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to fetch filters: ${(filtersError as Error).message}`,
+            message: `Failed to fetch cells: ${cellsError.message}`,
           });
         }
 
-
-        // Get columns
-        const { data: columns, error: columnsError } = await supabase
-          .from('columns')
-          .select('id, name, type, position')
-          .eq('table_id', input.tableId)
-          .order('position', { ascending: true });
-
-        if (columnsError) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to fetch columns: ${(columnsError as Error).message}`,
+        // Group cells by row_id for efficient filtering
+        const cellsByRow = new Map<string, Array<{column_id: string, value_text: string | null, value_number: number | null}>>();
+        allCells?.forEach(cell => {
+          if (!cellsByRow.has(cell.row_id)) {
+            cellsByRow.set(cell.row_id, []);
+          }
+          cellsByRow.get(cell.row_id)!.push({
+            column_id: cell.column_id,
+            value_text: cell.value_text,
+            value_number: cell.value_number
           });
+        });
+
+        // Apply filters to find matching rows
+        const matchCounts: Record<string, number> = {};
+        
+        for (const filter of filters) {
+          const isNumber = filter.value_number !== null && filter.value_number !== undefined;
+          const val = isNumber ? filter.value_number : filter.value_text;
+
+          for (const [rowId, cells] of cellsByRow.entries()) {
+            const matchingCell = cells.find(cell => cell.column_id === filter.column_id);
+            if (!matchingCell) continue;
+
+            const cellValue = isNumber ? matchingCell.value_number : matchingCell.value_text;
+
+            const match = (() => {
+              switch (filter.operator) {
+                case 'equals':
+                  return cellValue === val;
+                case 'contains':
+                  return (
+                    typeof cellValue === 'string' &&
+                    cellValue.toLowerCase().includes((val as string).toLowerCase())
+                  );
+                case 'not_contains':
+                  return (
+                    typeof cellValue === 'string' &&
+                    !cellValue.toLowerCase().includes((val as string).toLowerCase())
+                  );
+                case 'is_empty':
+                  return cellValue === null || cellValue === '';
+                case 'not_empty':
+                  return cellValue !== null && cellValue !== '';
+                case 'gt':
+                  return typeof cellValue === 'number' && cellValue > (val as number);
+                case 'lt':
+                  return typeof cellValue === 'number' && cellValue < (val as number);
+                default:
+                  return false;
+              }
+            })();
+
+            if (match) {
+              matchCounts[rowId] = (matchCounts[rowId] || 0) + 1;
+            }
+          }
         }
 
-        // Get rows with cells
-        let rowsQuery = supabase
+        // Keep only row_ids that matched all filters
+        filteredRowIds = Object.entries(matchCounts)
+          .filter(([_, count]) => count === filters.length)
+          .map(([row_id]) => row_id);
+
+        if (filteredRowIds.length === 0) {
+          return { columns: columns || [], rows: [] };
+        }
+
+        // Now fetch the complete rows with ALL their cells
+        const { data: rows, error: rowsError } = await supabase
           .from('rows')
           .select(`
             id,
-            cells(
-              id,
-              column_id,
-              value_text,
-              value_number
-            )
+            created_at,
+            cells(id, column_id, value_text, value_number)
           `)
           .eq('table_id', input.tableId)
+          .in('id', filteredRowIds)
           .order('created_at', { ascending: true });
-
-        // Apply the filter mapping we just made
-        if (filters && filters.length > 0) {
-          rowsQuery = applySupabaseFilters(rowsQuery, filters.map(filter => {
-            const column = columns.find(col => col.id === filter.column_id);
-            return {
-              column_id: filter.column_id,
-              operator: filter.operator,
-              value_text: filter.value_text,
-              value_number: filter.value_number,
-              column_type: column?.type === 'number' ? 'number' : 'text',
-            };
-          }));
-        }
-
-        const { data: rows, error: rowsError } = await rowsQuery;
 
         if (rowsError) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to fetch rows: ${(rowsError as Error).message}`,
+            message: `Failed to fetch rows: ${rowsError.message}`,
           });
         }
 
@@ -487,18 +555,38 @@ export const tablesRouter = createTRPCRouter({
           columns: columns || [],
           rows: rows || [],
         };
-      } catch (error) {
-        if (error instanceof TRPCError) {
-          throw error;
+      } else {
+        // No filters - use the original query
+        const { data: rows, error: rowsError } = await supabase
+          .from('rows')
+          .select(`
+            id,
+            created_at,
+            cells(id, column_id, value_text, value_number)
+          `)
+          .eq('table_id', input.tableId)
+          .order('created_at', { ascending: true });
+
+        if (rowsError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch rows: ${rowsError.message}`,
+          });
         }
-        
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "An unexpected error occurred while fetching table data",
-          cause: error,
-        });
+
+        return { columns: columns || [], rows: rows || [] };
       }
-    }),
+    } catch (error) {
+      if (error instanceof TRPCError) throw error;
+
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "An unexpected error occurred while fetching table data",
+        cause: error,
+      });
+    }
+  }),
+
 
   /**
    * Add a new row to a table
