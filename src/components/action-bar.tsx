@@ -1,6 +1,6 @@
 'use client'
 
-import { AlignJustify, ArrowDownUp, ExternalLink, EyeOff, List, ListFilter, MoveVertical, PaintBucket, Search, Sparkle, TableCellsSplit } from "lucide-react";
+import { AlignJustify, ArrowDownUp, ExternalLink, EyeOff, ListFilter, MoveVertical, PaintBucket, Search, Sparkle, TableCellsSplit } from "lucide-react";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -9,7 +9,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { FilterBuilder } from "./filter-builder";
+import { ColumnManager } from "./column-manager";
 import { useSidebar } from "./ui/sidebar";
+import { api } from "@/trpc/react";
 
 type ActionBarProps = {
   tableId: string;
@@ -18,6 +20,14 @@ type ActionBarProps = {
 
 export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
   const { toggleSidebar } = useSidebar();
+
+  // Fetch all views for the table
+  const { data: viewsData, isLoading: isLoadingViews } = api.views.getViews.useQuery(
+    { tableId },
+    { enabled: !!tableId }
+  );
+  // Find the current view by viewId
+  const currentView = viewsData?.find((view) => view.id === viewId);
 
   return (
     <div className="flex items-start justify-between py-2 px-4 border-b bg-background">
@@ -32,7 +42,7 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
 
         <Button variant="ghost">
             <TableCellsSplit className="w-4 h-4 text-blue-500" />
-            <span className="">Grid view</span>
+            <span className="w-24 truncate text-left">{isLoadingViews ? "Loading..." : currentView?.name || "View"}</span>
         </Button>
 
         <div className="h-5 w-[1px] my-auto"></div>
@@ -43,8 +53,8 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <EyeOff className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
+          <DropdownMenuContent align="start" className="w-70 p-4">
+            <ColumnManager viewId={viewId} tableId={tableId} />
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>

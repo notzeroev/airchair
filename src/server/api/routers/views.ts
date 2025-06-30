@@ -52,17 +52,26 @@ export const viewsRouter = createTRPCRouter({
     .input(
       z.object({
         viewId: z.string().uuid(),
-        name: z.string().min(1).max(255),
+        name: z.string().min(1).max(255).optional(),
+        columnIds: z.array(z.string().uuid()).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
       const supabase = ctx.getSupabaseClient();
       try {
+        const updateData: any = {};
+        if (input.name !== undefined) {
+          updateData.name = input.name;
+        }
+        if (input.columnIds !== undefined) {
+          updateData.hidden_column_ids = input.columnIds;
+        }
+
         const { data: updatedView, error: updateError } = await supabase
           .from('views')
-          .update({ name: input.name })
+          .update(updateData)
           .eq('id', input.viewId)
-          .select('id, name')
+          .select('id, name, hidden_column_ids')
           .single();
         if (updateError || !updatedView) {
           throw new TRPCError({
@@ -71,7 +80,11 @@ export const viewsRouter = createTRPCRouter({
             cause: updateError,
           });
         }
-        return { viewId: updatedView.id, name: updatedView.name };
+        return { 
+          viewId: updatedView.id, 
+          name: updatedView.name,
+          hiddenColumnIds: updatedView.hidden_column_ids || []
+        };
       } catch (error) {
         if (error instanceof TRPCError) {
           throw error;
@@ -142,7 +155,8 @@ export const viewsRouter = createTRPCRouter({
 
       return { viewId };
     }),
-    getColumns: protectedProcedure
+
+  getColumns: protectedProcedure
     .input(z.object({
       tableId: z.string().uuid()
     }))
@@ -163,6 +177,41 @@ export const viewsRouter = createTRPCRouter({
       }
 
       return { columns: columns || [], };
+    }),
+
+  getHiddenColumns: protectedProcedure
+    .input(z.object({
+      viewId: z.string().uuid()
+    }))
+    .query(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+      try {
+        const { data: view, error: viewError } = await supabase
+          .from('views')
+          .select('hidden_column_ids')
+          .eq('id', input.viewId)
+          .single();
+
+        if (viewError || !view) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to fetch view: ${(viewError as Error).message}`,
+            cause: viewError,
+          });
+        }
+
+        return { hiddenColumnIds: view.hidden_column_ids || [] };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while fetching hidden columns",
+          cause: error,
+        });
+      }
     }),
 
   getViews: protectedProcedure

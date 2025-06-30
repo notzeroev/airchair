@@ -78,6 +78,13 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
     { enabled: !!tableId }
   );
 
+  // Fetch hidden columns for the view
+  const { data: hiddenColumnsData, isLoading: isLoadingHiddenColumns } = api.views.getHiddenColumns.useQuery(
+    { viewId },
+    { enabled: !!viewId }
+  );
+  const hiddenColumnIds = hiddenColumnsData?.hiddenColumnIds ?? [];
+
   const utils = api.useUtils();
 
   const addRowMutation = api.tables.addRow.useMutation({
@@ -268,8 +275,14 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
     }
   };
 
-  const columns = useMemo<ColumnDef<Row>[]>(() => {
+  // Use only visible columns (not hidden)
+  const visibleColumns = useMemo(() => {
     if (!tableData?.columns) return [];
+    return tableData.columns.filter(col => !hiddenColumnIds.includes(col.id));
+  }, [tableData?.columns, hiddenColumnIds]);
+
+  const columns = useMemo<ColumnDef<Row>[]>(() => {
+    if (!visibleColumns) return [];
 
     const indexColumn: ColumnDef<Row> = {
       id: "index",
@@ -279,7 +292,7 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
       enableResizing: false,
     };
 
-    const dynamicColumns: ColumnDef<Row>[] = tableData.columns.map((col: Column, colIdx) => ({
+    const dynamicColumns: ColumnDef<Row>[] = visibleColumns.map((col: Column, colIdx) => ({
       id: col.id,
       header: () => (
         <div className="flex items-center justify-between group p-2 overflow-hidden">
@@ -335,7 +348,11 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
       header: () => (
         <div className="flex justify-center hover:scale-120 transition-transform">
           <Button variant="ghost" size="sm" onClick={() => addColumnMutation.mutate({ tableId })} disabled={addColumnMutation.isPending} className="h-6 w-6 p-0" title="Add Column">
-            <Plus className="h-3 w-3" />
+            {addColumnMutation.isPending ? (
+              <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Plus className="h-3 w-3" />
+            )}
           </Button>
         </div>
       ),
@@ -347,7 +364,7 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
     };
 
     return [indexColumn, ...dynamicColumns, actionsColumn];
-  }, [tableData?.columns, addColumnMutation, deleteColumnMutation, updateColumnMutation.isPending, tableId, handleEditColumn, handleCellActivate, activeCell, editingCell]);
+  }, [visibleColumns, addColumnMutation, deleteColumnMutation, updateColumnMutation.isPending, tableId, handleEditColumn, handleCellActivate, activeCell, editingCell]);
 
   const table = useReactTable({
     data: tableData?.rows ?? [],
@@ -368,7 +385,7 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <div className="p-6 w-full">
         <div className="flex items-center justify-center min-h-[200px]">
           <div className="text-center flex flex-col items-center gap-4">
               <LoadingIcon />
@@ -391,7 +408,7 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
   }
 
   return (
-    <div className="w-fit w-full h-full">
+    <div className="w-full h-full">
       
       {/* virt stuff */}
       <div className="border border-border border-t-0 overflow-hidden h-full">
