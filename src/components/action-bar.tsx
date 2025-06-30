@@ -12,6 +12,7 @@ import { FilterBuilder } from "./filter-builder";
 import { ColumnManager } from "./column-manager";
 import { useSidebar } from "./ui/sidebar";
 import { api } from "@/trpc/react";
+import { SortBuilder } from "./sort-builder";
 
 type ActionBarProps = {
   tableId: string;
@@ -73,8 +74,8 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
                 <ArrowDownUp className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
+          <DropdownMenuContent align="start" className="w-100 p-4">
+            <SortBuilder viewId={viewId} tableId={tableId} />
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>

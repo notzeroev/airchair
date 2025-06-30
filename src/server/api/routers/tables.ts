@@ -131,6 +131,31 @@ const createSampleRowsWithData = async (
   return sampleRows;
 };
 
+// Helper to get cell value for a row and column
+function getCellValue(row: any, columnId: string) {
+  const cell = row.cells.find((c: any) => c.column_id === columnId);
+  return cell ? (cell.value_number !== null && cell.value_number !== undefined ? cell.value_number : cell.value_text) : null;
+}
+
+// Helper to compare two rows by sorts
+function compareRowsBySorts(a: any, b: any, sorts: any[]) {
+  for (const sort of sorts) {
+    const aValue = getCellValue(a, sort.column_id);
+    const bValue = getCellValue(b, sort.column_id);
+    if (aValue === bValue) continue;
+    if (aValue === null || aValue === undefined) return 1;
+    if (bValue === null || bValue === undefined) return -1;
+    if (typeof aValue === "number" && typeof bValue === "number") {
+      if (sort.direction === "asc") return aValue - bValue;
+      else return bValue - aValue;
+    } else {
+      if (sort.direction === "asc") return String(aValue).localeCompare(String(bValue));
+      else return String(bValue).localeCompare(String(aValue));
+    }
+  }
+  return 0;
+}
+
 export const tablesRouter = createTRPCRouter({
   /**
    * Get all tables for a specific base
@@ -426,6 +451,20 @@ export const tablesRouter = createTRPCRouter({
         });
       }
 
+      // Step 2: Get sorts
+      const { data: sorts, error: sortsError } = await supabase
+        .from('sorts')
+        .select('column_id, direction, order_index')
+        .eq('view_id', input.viewId)
+        .order('order_index', { ascending: true });
+
+      if (sortsError) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to fetch sorts: ${sortsError.message}`,
+        });
+      }
+
       // Step 3: Get columns
       const { data: columns, error: columnsError } = await supabase
         .from('columns')
@@ -544,6 +583,12 @@ export const tablesRouter = createTRPCRouter({
           .in('id', filteredRowIds)
           .order('created_at', { ascending: true });
 
+        // Apply sorts at db level (in-memory sort)
+        let sortedRows = rows || [];
+        if (sorts && sorts.length > 0 && sortedRows.length > 0) {
+          sortedRows = [...sortedRows].sort((a, b) => compareRowsBySorts(a, b, sorts));
+        }
+
         if (rowsError) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
@@ -553,7 +598,7 @@ export const tablesRouter = createTRPCRouter({
 
         return {
           columns: columns || [],
-          rows: rows || [],
+          rows: sortedRows,
         };
       } else {
         // No filters - use the original query
@@ -567,14 +612,11 @@ export const tablesRouter = createTRPCRouter({
           .eq('table_id', input.tableId)
           .order('created_at', { ascending: true });
 
-        if (rowsError) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to fetch rows: ${rowsError.message}`,
-          });
+        let sortedRows2 = rows || [];
+        if (sorts && sorts.length > 0 && sortedRows2.length > 0) {
+          sortedRows2 = [...sortedRows2].sort((a, b) => compareRowsBySorts(a, b, sorts));
         }
-
-        return { columns: columns || [], rows: rows || [] };
+        return { columns: columns || [], rows: sortedRows2 };
       }
     } catch (error) {
       if (error instanceof TRPCError) throw error;
