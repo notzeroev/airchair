@@ -151,8 +151,9 @@ export function ViewSidebar({ tableId, viewId, baseId }: ViewSidebarProps) {
                       <TableCellsSplit className="w-4 h-4 text-blue-500" />
                       <span className="truncate">{view.name}</span>
                     </div>
-                    {views.length > 1 && (
-                      <span
+                    <div className="flex items-center">
+                      {views.length > 1 && (
+                        <span
                         role="button"
                         tabIndex={0}
                         className="h-6 w-6 p-0 opacity-0 group-hover/menu-item:opacity-50 transition-opacity flex items-center justify-center cursor-pointer hover:text-destructive hover:opacity-100"
@@ -161,10 +162,11 @@ export function ViewSidebar({ tableId, viewId, baseId }: ViewSidebarProps) {
                           handleDeleteView(view.id);
                         }}
                         aria-disabled={deleteViewMutation.isPending}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </span>
-                    )}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </span>
+                      )}
+                    </div>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))
