@@ -50,7 +50,7 @@ export function Cell({
                            (activeElement as HTMLElement)?.contentEditable === 'true';
       
       if (!isInputFocused) {
-        cellRef.current.focus();
+        cellRef.current.focus({ preventScroll: true });
       }
     }
   }, [isActive, isEditing]);
