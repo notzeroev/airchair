@@ -993,4 +993,41 @@ export const tablesRouter = createTRPCRouter({
         });
       }
     }),
+
+  /**
+   * Get the total number of rows in a table
+   */
+  getRowCount: protectedProcedure
+    .input(z.object({
+      tableId: z.string().uuid("Invalid table ID format"),
+    }))
+    .query(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+      try {
+        // Verify table access
+        await verifyTableAccess(supabase, input.tableId, ctx.user.id);
+
+        // Count rows in the table
+        const { count, error } = await supabase
+          .from('rows')
+          .select('id', { count: 'exact', head: true })
+          .eq('table_id', input.tableId);
+
+        if (error) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to count rows: ${(error as Error).message}`,
+          });
+        }
+
+        return { count: count ?? 0 };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred while counting rows",
+          cause: error,
+        });
+      }
+    }),
 });

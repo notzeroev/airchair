@@ -79,6 +79,11 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
     { enabled: !!tableId }
   );
 
+  const { data: rowCount } = api.tables.getRowCount.useQuery(
+    { tableId },
+    { enabled: !!tableId }
+  );
+
   // Fetch hidden columns for the view
   const { data: hiddenColumnsData, isLoading: isLoadingHiddenColumns } = api.views.getHiddenColumns.useQuery(
     { viewId },
@@ -525,23 +530,26 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
               )}
               100 Rows
             </Button>
-            <Button
-              onClick={handleBatchAddRows}
-              variant="outline"
-              disabled={batchProgress.isRunning}
-              size="sm"
-              className="h-8 px-3 flex items-center gap-1"
-            >
-              {batchProgress.isRunning ? (
-                <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Plus className="h-3 w-3" />
-              )}
-              {batchProgress.isRunning 
-                ? `${batchProgress.current}/${batchProgress.total}K Rows` 
-                : "10K Rows"
-              }
-            </Button>
+
+            { rowCount && rowCount.count < 10000 && (
+              <Button
+                onClick={handleBatchAddRows}
+                variant="outline"
+                disabled={batchProgress.isRunning}
+                size="sm"
+                className="h-8 px-3 flex items-center gap-1"
+              >
+                {batchProgress.isRunning ? (
+                  <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Plus className="h-3 w-3" />
+                )}
+                {batchProgress.isRunning 
+                  ? `${batchProgress.current}/${batchProgress.total}K Rows` 
+                  : "10K Rows"
+                }
+              </Button>
+            )}
           </div>
         </div>
       </div>
