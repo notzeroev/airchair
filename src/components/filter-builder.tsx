@@ -26,19 +26,7 @@ const TEXT_OPERATORS = [
 const NUMBER_OPERATORS = [
   { value: "equals", label: "Equals" },
   { value: "gt", label: "Greater than" },
-  { value: "lt", label: "Less than" },
-  { value: "is_empty", label: "Is empty" },
-  { value: "not_empty", label: "Is not empty" },
-];
-
-const ALL_OPERATORS = [
-  { value: "equals", label: "Equals" },
-  { value: "contains", label: "Contains" },
-  { value: "not_contains", label: "Does not contain" },
-  { value: "is_empty", label: "Is empty" },
-  { value: "not_empty", label: "Is not empty" },
-  { value: "gt", label: "Greater than" },
-  { value: "lt", label: "Less than" },
+  { value: "lt", label: "Less than" }
 ];
 
 type FilterState = {

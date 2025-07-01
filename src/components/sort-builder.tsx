@@ -14,7 +14,7 @@ import { Trash2, Plus } from "lucide-react";
 import { useState, useEffect } from "react";
 
 type SortState = {
-  id?: string; // undefined for new sorts
+  id?: string;
   columnId: string;
   direction: "asc" | "desc";
   order_index?: number;
@@ -136,16 +136,20 @@ export const SortBuilder = ({ tableId, viewId }: SortBuilderProps) => {
     }
   };
 
-  const resetChanges = () => {
-    if (serverSorts) {
-      const resetSorts: SortState[] = serverSorts.map((sort, idx) => ({
-        id: sort.id,
-        columnId: sort.columnId,
-        direction: sort.direction,
-        order_index: sort.order_index ?? idx,
-      }));
-      setLocalSorts(resetSorts);
-      setHasChanges(false);
+  // Helper to get the type of a column by id
+  const getColumnType = (columnId: string) => {
+    const column = columns?.columns.find((col: any) => col.id === columnId);
+    return column?.type || 'text';
+  };
+
+  // Helper to get direction labels based on column type
+  const getDirectionLabels = (columnType: string) => {
+    if (columnType === 'number') {
+      return { asc: 'Increasing', desc: 'Decreasing' };
+    } else if (columnType === 'text') {
+      return { asc: 'A → Z', desc: 'Z → A' };
+    } else {
+      return { asc: 'Ascending', desc: 'Descending' };
     }
   };
 
@@ -205,8 +209,16 @@ export const SortBuilder = ({ tableId, viewId }: SortBuilderProps) => {
                           <SelectValue placeholder="Direction" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="asc">Ascending</SelectItem>
-                          <SelectItem value="desc">Descending</SelectItem>
+                          {(() => {
+                            const columnType = getColumnType(sort.columnId);
+                            const labels = getDirectionLabels(columnType);
+                            return (
+                              <>
+                                <SelectItem value="asc">{labels.asc}</SelectItem>
+                                <SelectItem value="desc">{labels.desc}</SelectItem>
+                              </>
+                            );
+                          })()}
                         </SelectContent>
                       </Select>
                     </div>

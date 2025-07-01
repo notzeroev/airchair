@@ -25,6 +25,7 @@ interface DynamicTableProps {
   tableId: string;
   viewId: string;
   tableName?: string;
+  query: string;
 }
 
 interface Column {
@@ -46,7 +47,7 @@ interface Row {
   cells: Cell[];
 }
 
-export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
+export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<Column | null>(null);
   const [columnName, setColumnName] = useState("");
@@ -262,7 +263,7 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
     if (targetRow && tableData.columns) {
       const targetColumn = tableData.columns[newCol];
       if (targetColumn) {
-        const targetCell = targetRow.cells.find(c => c.column_id === targetColumn.id);
+        const targetCell = targetRow.cells.find((c: Cell) => c.column_id === targetColumn.id);
         if (targetCell) {
           setActiveCell({
             cellId: targetCell.id,
@@ -331,6 +332,7 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
             value={value}
             cellId={cellId}
             columnType={columnType}
+            isHighlighted={!!(query && value?.toString().toLowerCase().includes(query.toLowerCase()))}
             isActive={isActive}
             isEditing={isEditing}
             onActivate={() => setActiveCell({ cellId, rowIndex: row.index, columnIndex: dataColumnIndex })}
@@ -366,9 +368,9 @@ export function DynamicTable({ tableId, viewId }: DynamicTableProps) {
     return [indexColumn, ...dynamicColumns, actionsColumn];
   }, [visibleColumns, addColumnMutation, deleteColumnMutation, updateColumnMutation.isPending, tableId, handleEditColumn, handleCellActivate, activeCell, editingCell]);
 
-  const table = useReactTable({
-    data: tableData?.rows ?? [],
-    columns: columns as ColumnDef<{ id: any; created_at: any; cells: { id: any; column_id: any; value_text: any; value_number: any; }[]; }>[],
+  const table = useReactTable<Row>({
+    data: (tableData?.rows ?? []) as Row[],
+    columns: columns as ColumnDef<Row>[],
     getCoreRowModel: getCoreRowModel(),
   });
 

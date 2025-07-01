@@ -13,13 +13,16 @@ import { ColumnManager } from "./column-manager";
 import { useSidebar } from "./ui/sidebar";
 import { api } from "@/trpc/react";
 import { SortBuilder } from "./sort-builder";
+import { GlobalSearch } from "./global-search";
 
 type ActionBarProps = {
   tableId: string;
   viewId: string;
+  query: string;
+  setQuery: (query: string) => void;
 };
 
-export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
+export const ActionBar = ({ viewId, tableId, query, setQuery }: ActionBarProps) => {
   const { toggleSidebar } = useSidebar();
 
   // Fetch all views for the table
@@ -121,14 +124,14 @@ export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
         </DropdownMenu>
       </div>
       <div>
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="cursor-pointer">
               <Search className="w-4 h-4 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <DropdownMenuItem disabled>Feature coming soon</DropdownMenuItem>
+            <GlobalSearch tableId={tableId} query={query} setQuery={setQuery} />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

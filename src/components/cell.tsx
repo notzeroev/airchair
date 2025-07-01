@@ -9,6 +9,7 @@ interface CellProps {
   columnType: "text" | "number";
   isActive: boolean;
   isEditing: boolean;
+  isHighlighted: boolean;
   onActivate: () => void;
   onEditStart: () => void;
   onEditEnd: (newValue: string) => void;
@@ -18,7 +19,8 @@ export function Cell({
   value,
   columnType,
   isActive,
-  isEditing,
+  isEditing,  
+  isHighlighted,
   onActivate,
   onEditStart,
   onEditEnd,
@@ -98,7 +100,8 @@ export function Cell({
       className={cn(
         "px-3 py-2 min-h-10 max-w-[calc(10.5rem-1px)] flex items-center text-sm cursor-pointer transition-colors focus:outline-none border-2 border-transparent",
         isActive && "border-2 border-blue-600 text-blue-600",  
-        isEditing && "text-bg-foreground"
+        isHighlighted && "bg-yellow-400/30",
+        isEditing && "text-bg-foreground",
       )}
       tabIndex={isActive && !isEditing ? 0 : -1}
       onClick={handleClick}

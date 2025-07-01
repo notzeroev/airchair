@@ -54,6 +54,7 @@ export const viewsRouter = createTRPCRouter({
         viewId: z.string().uuid(),
         name: z.string().min(1).max(255).optional(),
         columnIds: z.array(z.string().uuid()).optional(),
+        query: z.string().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -66,12 +67,15 @@ export const viewsRouter = createTRPCRouter({
         if (input.columnIds !== undefined) {
           updateData.hidden_column_ids = input.columnIds;
         }
+        if (input.query !== undefined) {
+          updateData.query = input.query;
+        }
 
         const { data: updatedView, error: updateError } = await supabase
           .from('views')
           .update(updateData)
           .eq('id', input.viewId)
-          .select('id, name, hidden_column_ids')
+          .select('id, name, hidden_column_ids, query')
           .single();
         if (updateError || !updatedView) {
           throw new TRPCError({
@@ -83,7 +87,8 @@ export const viewsRouter = createTRPCRouter({
         return { 
           viewId: updatedView.id, 
           name: updatedView.name,
-          hiddenColumnIds: updatedView.hidden_column_ids || []
+          hiddenColumnIds: updatedView.hidden_column_ids || [],
+          query: updatedView.query || ""
         };
       } catch (error) {
         if (error instanceof TRPCError) {
@@ -251,5 +256,32 @@ export const viewsRouter = createTRPCRouter({
           cause: error,
         });
       }
+    }),
+
+  getViewById: protectedProcedure
+    .input(z.object({
+      viewId: z.string().uuid()
+    }))
+    .query(async ({ input, ctx }) => {
+      const supabase = ctx.getSupabaseClient();
+      const { data: view, error } = await supabase
+        .from('views')
+        .select('id, name, type, hidden_column_ids, query')
+        .eq('id', input.viewId)
+        .single();
+      if (error || !view) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to fetch view: ${(error as Error)?.message}`,
+          cause: error,
+        });
+      }
+      return {
+        id: view.id,
+        name: view.name,
+        type: view.type,
+        hiddenColumnIds: view.hidden_column_ids || [],
+        query: view.query || ""
+      };
     }),
 });
