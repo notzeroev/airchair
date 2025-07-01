@@ -18,11 +18,9 @@ import { GlobalSearch } from "./global-search";
 type ActionBarProps = {
   tableId: string;
   viewId: string;
-  query: string;
-  setQuery: (query: string) => void;
 };
 
-export const ActionBar = ({ viewId, tableId, query, setQuery }: ActionBarProps) => {
+export const ActionBar = ({ viewId, tableId }: ActionBarProps) => {
   const { toggleSidebar } = useSidebar();
 
   // Fetch all views for the table
@@ -131,7 +129,7 @@ export const ActionBar = ({ viewId, tableId, query, setQuery }: ActionBarProps) 
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <GlobalSearch tableId={tableId} query={query} setQuery={setQuery} />
+            <GlobalSearch tableId={tableId} viewId={viewId} />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

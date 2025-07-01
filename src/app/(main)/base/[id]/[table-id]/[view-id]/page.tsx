@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DynamicTable } from "@/components/dynamic-table";
 import { ActionBar } from "@/components/action-bar";
 import { ViewSidebar } from "@/components/view-sidebar";
-import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +30,6 @@ export default function BaseDetailPage() {
   const tableId = params['table-id'];
   const viewId = params['view-id'];
 
-  // Global query state management
-  const [searchQuery, setSearchQuery] = useState("");
-
   const [tableName, setTableName] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("");
@@ -47,41 +44,12 @@ export default function BaseDetailPage() {
   const colorClass = ColorClasses[baseData.data?.color as ColorIndex];
   const baseName = baseData.data?.name;
 
-  // Fetch current view data to get the stored query
   const { data: currentView } = api.views.getViewById.useQuery(
     { viewId },
     { enabled: !!viewId }
   );
 
   const utils = api.useUtils();
-
-  // Update view query mutation
-  const updateViewQueryMutation = api.views.updateView.useMutation({
-    onSuccess: () => {
-      // Invalidate the view data to refresh the query
-      void utils.views.getViewById.invalidate({ viewId });
-    },
-  });
-
-  // Initialize search query from view data
-  useEffect(() => {
-    if (currentView?.query) {
-      setSearchQuery(currentView.query);
-    } else {
-      setSearchQuery("");
-    }
-  }, [currentView?.query]);
-
-  // Handle query updates - debounced update to database
-  const handleQueryUpdate = (newQuery: string) => {
-    setSearchQuery(newQuery);
-    
-    // Update the view in the database
-    updateViewQueryMutation.mutate({
-      viewId,
-      query: newQuery,
-    });
-  };
 
   const {
     data: tables,
@@ -263,7 +231,7 @@ export default function BaseDetailPage() {
                           className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary disabled:opacity-50 flex items-center gap-2 min-w-30 justify-center"
                         >
                           {createTable.isPending ? (
-                            <div className="h-5 w-5 border border-current border-t-transparent rounded-full animate-spin" />
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                           ) : null}
                           {createTable.isPending ? '' : 'Create Table'}
                         </button>
@@ -292,8 +260,6 @@ export default function BaseDetailPage() {
                 <ActionBar
                   tableId={table.id}
                   viewId={viewId}
-                  query={searchQuery}
-                  setQuery={handleQueryUpdate}
                 />
                 <div className="flex relative h-full">
                     {table.id === tableId && (
@@ -307,7 +273,7 @@ export default function BaseDetailPage() {
                       tableId={table.id}
                       viewId={viewId}
                       tableName={table.name}
-                      query={searchQuery}
+                      query={currentView?.query || ""}
                     />
                 </div>
               </div>

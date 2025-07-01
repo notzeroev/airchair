@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 
 export function BaseTable() {
@@ -129,7 +129,7 @@ export function BaseTable() {
               className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary disabled:opacity-50 flex items-center gap-2 min-w-30 justify-center"
               >
               {createBase.isPending ? (
-                <div className="h-5 w-5 border border-current border-t-transparent rounded-full animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               ) : null}
               {createBase.isPending ? '' : 'Create Base'}
               </button>

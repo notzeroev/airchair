@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-table";
 import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit3, Trash2, Text, SquareSigma } from "lucide-react";
+import { Plus, Edit3, Trash2, Text, SquareSigma, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -74,7 +74,7 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
     columnIndex: number;
   } | null>(null);
 
-  const { data: tableData, isLoading, error } = api.tables.getTableData.useQuery(
+  const { data: tableData, isLoading, error, isFetching } = api.tables.getTableData.useQuery(
     { tableId, viewId },
     { enabled: !!tableId }
   );
@@ -85,7 +85,7 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
   );
 
   // Fetch hidden columns for the view
-  const { data: hiddenColumnsData, isLoading: isLoadingHiddenColumns } = api.views.getHiddenColumns.useQuery(
+  const { data: hiddenColumnsData } = api.views.getHiddenColumns.useQuery(
     { viewId },
     { enabled: !!viewId }
   );
@@ -115,7 +115,7 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
 
   const updateColumnMutation = api.tables.updateColumn.useMutation({
     onSuccess: () => {
-      void utils.tables.getTableData.invalidate({ tableId });
+      void utils.tables.getTableData.invalidate({ tableId, viewId });
       setIsEditModalOpen(false);
       setEditingColumn(null);
     },
@@ -337,9 +337,9 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
             value={value}
             cellId={cellId}
             columnType={columnType}
-            isHighlighted={!!(query && value?.toString().toLowerCase().includes(query.toLowerCase()))}
             isActive={isActive}
             isEditing={isEditing}
+            isHighlighted={!!(query && value?.toString().toLowerCase().includes(query.toLowerCase()))}
             onActivate={() => setActiveCell({ cellId, rowIndex: row.index, columnIndex: dataColumnIndex })}
             onEditStart={() => handleCellEditStart(cellId, row.index, dataColumnIndex)}
             onEditEnd={(newValue) => handleCellEditEnd(cellId, columnType, newValue)}
@@ -356,7 +356,7 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
         <div className="flex justify-center hover:scale-120 transition-transform">
           <Button variant="ghost" size="sm" onClick={() => addColumnMutation.mutate({ tableId })} disabled={addColumnMutation.isPending} className="h-6 w-6 p-0" title="Add Column">
             {addColumnMutation.isPending ? (
-              <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
             ) : (
               <Plus className="h-3 w-3" />
             )}
@@ -390,13 +390,13 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
   });
   
 
-  if (isLoading) {
+  if (isLoading || isFetching) {
     return (
       <div className="p-6 w-full">
         <div className="flex items-center justify-center min-h-[200px]">
           <div className="text-center flex flex-col items-center gap-4">
               <LoadingIcon />
-              <p className="text-muted-foreground text-sm">Loading table data...</p>
+              <p className="text-muted-foreground text-sm">{isFetching ? "Fetching data..." : "Loading data..."}</p>
           </div>
         </div>
       </div>
@@ -524,7 +524,7 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
               className="h-8 px-3 flex items-center gap-1"
             >
               {addRowsMutation.isPending ? (
-                <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
               ) : (
                 <Plus className="h-3 w-3" />
               )}
@@ -540,7 +540,7 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
                 className="h-8 px-3 flex items-center gap-1"
               >
                 {batchProgress.isRunning ? (
-                  <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                 ) : (
                   <Plus className="h-3 w-3" />
                 )}
