@@ -144,9 +144,6 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
         // Small delay to prevent overwhelming the server
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      
-      // Refresh table data after completion
-      void utils.tables.getTableData.invalidate({ tableId, viewId });
     } catch (error) {
       console.error('Batch add failed:', error);
     } finally {
@@ -390,7 +387,7 @@ export function DynamicTable({ tableId, viewId, query }: DynamicTableProps) {
   });
   
 
-  if (isLoading || isFetching) {
+  if (isLoading || !batchProgress.isRunning && isFetching) {
     return (
       <div className="p-6 w-full">
         <div className="flex items-center justify-center min-h-[200px]">
